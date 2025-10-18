@@ -75,7 +75,7 @@ class MonitorWorker(threading.Thread):
             
             # Find new movies
             new_movies = self.monitor.find_new_movies(current_watchlist, saved_watchlist)
-            
+
             added_count = 0
             if new_movies:
                 print(f"   🆕 Found {len(new_movies)} new movie(s):")
@@ -262,6 +262,7 @@ class DownloadWorker(threading.Thread):
             return False
         
         from difflib import SequenceMatcher
+        import re
         
         title = movie.get('title', '')
         year = movie.get('year', '')
@@ -270,22 +271,36 @@ class DownloadWorker(threading.Thread):
         normalized_title = title.lower().replace(' ', '.').replace(':', '').replace("'", '')
         
         # Search through files
-        threshold = 0.85  # 85% similarity required
-        
         for file_path in self.download_dir.rglob('*'):
             if not file_path.is_file():
                 continue
             
-            filename = file_path.stem.lower()
+            filename = file_path.name.lower()
+            
+            # First check: if normalized title is in filename (fast and accurate)
+            if normalized_title in filename:
+                # If year is specified, verify it's also in the filename
+                if year:
+                    if str(year) in filename:
+                        return True
+                else:
+                    # No year specified, title match is enough
+                    return True
+            
+            # Second check: fuzzy matching on title portion only
+            # Extract title portion (before quality indicators like 1080p, bluray, etc.)
+            title_part = re.split(r'\d{3,4}p|bluray|brrip|webrip|hdtv|dvdrip|x264|x265|h264|h265', 
+                                filename, flags=re.IGNORECASE)[0]
             
             # Calculate similarity
-            similarity = SequenceMatcher(None, normalized_title, filename).ratio()
+            similarity = SequenceMatcher(None, normalized_title, title_part).ratio()
             
             # Bonus for year match
             if year and str(year) in filename:
                 similarity += 0.10
             
-            if similarity >= threshold:
+            # Lower threshold for fuzzy matching (75% instead of 85%)
+            if similarity >= 0.75:
                 return True
         
         return False

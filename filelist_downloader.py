@@ -377,6 +377,7 @@ class FileListDownloader(MovieDownloader):
             return None
         
         from difflib import SequenceMatcher
+        import re
         
         title = movie.get('title', '')
         year = movie.get('year', '')
@@ -385,7 +386,6 @@ class FileListDownloader(MovieDownloader):
         normalized_title = title.lower().replace(' ', '.').replace(':', '').replace("'", '')
         
         # Search through torrent files
-        threshold = 0.85  # 85% similarity required
         best_match = None
         best_similarity = 0
         
@@ -395,14 +395,30 @@ class FileListDownloader(MovieDownloader):
             
             filename = torrent_file.stem.lower()
             
+            # First check: if normalized title is in filename (fast and accurate)
+            if normalized_title in filename:
+                # If year is specified, verify it's also in the filename
+                if year:
+                    if str(year) in filename:
+                        return torrent_file
+                else:
+                    # No year specified, title match is enough
+                    return torrent_file
+            
+            # Second check: fuzzy matching on title portion only
+            # Extract title portion (before quality indicators)
+            title_part = re.split(r'\d{3,4}p|bluray|brrip|webrip|hdtv|dvdrip|x264|x265|h264|h265',
+                                filename, flags=re.IGNORECASE)[0]
+            
             # Calculate similarity
-            similarity = SequenceMatcher(None, normalized_title, filename).ratio()
+            similarity = SequenceMatcher(None, normalized_title, title_part).ratio()
             
             # Bonus for year match
             if year and str(year) in filename:
                 similarity += 0.10
             
-            if similarity >= threshold and similarity > best_similarity:
+            # Lower threshold for fuzzy matching (75% instead of 85%)
+            if similarity >= 0.75 and similarity > best_similarity:
                 best_similarity = similarity
                 best_match = torrent_file
         
