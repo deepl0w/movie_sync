@@ -10,7 +10,6 @@ class Config:
     DEFAULT_CONFIG = {
         "username": "",
         "watchlist_file": str(CONFIG_DIR / "watchlist.json"),
-        "download_queue_file": str(CONFIG_DIR / "download_queue.json"),
         "check_interval": 3600,  # 1 hour
         "download_directory": os.path.expanduser("~/Downloads"),
         # Retry configuration

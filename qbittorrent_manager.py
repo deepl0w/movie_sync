@@ -10,11 +10,7 @@ from pathlib import Path
 from typing import Optional
 from credentials_manager import CredentialsManager
 
-try:
-    import qbittorrentapi
-except ImportError:
-    qbittorrentapi = None
-
+import qbittorrentapi
 
 class QBittorrentManager:
     """Manage qBittorrent downloads"""

@@ -20,7 +20,6 @@ class TestConfig:
         mocker.patch.object(Config, 'DEFAULT_CONFIG', {
             "username": "",
             "watchlist_file": str(temp_dir / "watchlist.json"),
-            "download_queue_file": str(temp_dir / "download_queue.json"),
             "check_interval": 3600,
             "download_directory": os.path.expanduser("~/Downloads")
         })
@@ -29,7 +28,6 @@ class TestConfig:
         
         assert config["username"] == ""
         assert config["watchlist_file"] == str(temp_dir / "watchlist.json")
-        assert config["download_queue_file"] == str(temp_dir / "download_queue.json")
         assert config["check_interval"] == 3600
         assert "download_directory" in config
     

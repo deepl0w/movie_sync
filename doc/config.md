@@ -16,13 +16,11 @@ The configuration file is automatically created with default values on first run
 {
     "username": "",                                    # Letterboxd username
     "watchlist_file": "~/.movie_sync/watchlist.json", # Watchlist cache
-    "download_queue_file": "~/.movie_sync/download_queue.json",  # Legacy queue
     "check_interval": 3600,                           # Monitor interval (seconds)
     "download_directory": "~/Downloads",              # Where movies are saved
     "retry_interval": 3600,                           # Base retry interval (seconds)
     "max_retries": 5,                                 # Maximum retry attempts
-    "backoff_multiplier": 2.0,                        # Exponential backoff multiplier
-    "use_threads": true                               # Enable threaded mode (always true)
+    "backoff_multiplier": 2.0                         # Exponential backoff multiplier
 }
 ```
 
@@ -180,16 +178,6 @@ With `retry_interval=1800` and `backoff_multiplier=1.5`:
 **Type**: `string`  
 **Default**: `"~/.movie_sync/watchlist.json"`  
 **Description**: Where the watchlist cache is stored. Generally not changed.
-
-#### download_queue_file
-**Type**: `string`  
-**Default**: `"~/.movie_sync/download_queue.json"`  
-**Description**: Legacy queue file (not used in threaded mode). Queue is now managed by separate JSON files.
-
-#### use_threads
-**Type**: `boolean`  
-**Default**: `true`  
-**Description**: Always true in current version. Single-threaded mode has been removed.
 
 ## Usage Examples
 

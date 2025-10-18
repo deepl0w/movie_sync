@@ -138,10 +138,8 @@ Add to `~/.movie_sync/config.json`:
   // Retry configuration
   "retry_interval": 3600,
   "max_retries": 5,
-  "backoff_multiplier": 2.0,
+  "backoff_multiplier": 2.0
   
-  // Threading
-  "use_threads": true
 }
 ```
 

@@ -64,6 +64,7 @@ class FileListDownloader(MovieDownloader):
         # qBittorrent configuration
         qbt_config = self.config.get("qbittorrent", {})
         if use_qbittorrent and qbt_config.get("enabled", True):
+            self.use_qbittorrent = True
             self.qbt_manager = QBittorrentManager(
                 host=qbt_config.get("host", "localhost"),
                 port=qbt_config.get("port", 8080),
@@ -73,8 +74,8 @@ class FileListDownloader(MovieDownloader):
             self.qbt_tags = qbt_config.get("tags", "movie_sync,filelist")
             self.qbt_save_path = qbt_config.get("save_path", None)
         else:
-            self.qbt_manager = None
             self.use_qbittorrent = False
+            self.qbt_manager = None
         
         # Set default torrent directory
         if torrent_dir is None:
@@ -363,6 +364,50 @@ class FileListDownloader(MovieDownloader):
         
         return best_torrent
     
+    def _find_existing_torrent(self, movie: Dict) -> Optional[Path]:
+        """Find existing torrent file using fuzzy matching
+        
+        Args:
+            movie: Movie dictionary with title and year
+            
+        Returns:
+            Path to existing torrent file, or None if not found
+        """
+        if not self.torrent_dir.exists():
+            return None
+        
+        from difflib import SequenceMatcher
+        
+        title = movie.get('title', '')
+        year = movie.get('year', '')
+        
+        # Normalize title for matching
+        normalized_title = title.lower().replace(' ', '.').replace(':', '').replace("'", '')
+        
+        # Search through torrent files
+        threshold = 0.85  # 85% similarity required
+        best_match = None
+        best_similarity = 0
+        
+        for torrent_file in self.torrent_dir.glob('*.torrent'):
+            if not torrent_file.is_file():
+                continue
+            
+            filename = torrent_file.stem.lower()
+            
+            # Calculate similarity
+            similarity = SequenceMatcher(None, normalized_title, filename).ratio()
+            
+            # Bonus for year match
+            if year and str(year) in filename:
+                similarity += 0.10
+            
+            if similarity >= threshold and similarity > best_similarity:
+                best_similarity = similarity
+                best_match = torrent_file
+        
+        return best_match
+    
     def download_movie(self, movie: Dict) -> bool:
         """Download a movie from FileList.io
         
@@ -378,6 +423,28 @@ class FileListDownloader(MovieDownloader):
         if movie.get('imdb_id'):
             print(f"IMDB: https://www.imdb.com/title/{movie['imdb_id']}/")
         print(f"{'='*60}")
+        
+        # Check if torrent file already exists locally (using fuzzy matching)
+        existing_torrent = self._find_existing_torrent(movie)
+        
+        if existing_torrent:
+            print(f"  ℹ Torrent file already exists: {existing_torrent}")
+            
+            # Try to add to qBittorrent if enabled
+            if self.use_qbittorrent and self.qbt_manager:
+                print(f"  Checking if already in qBittorrent...")
+                if self.qbt_manager.add_torrent(
+                    torrent_path=str(existing_torrent),
+                    save_path=self.qbt_save_path,
+                    category=self.qbt_category,
+                    tags=self.qbt_tags
+                ):
+                    print(f"  ✓ Torrent added to qBittorrent (or already exists)")
+                else:
+                    print(f"  ⚠ Could not add to qBittorrent")
+                    return False
+            
+            return True
         
         # Search for the movie
         results = self._search_movie(movie)
@@ -428,6 +495,7 @@ class FileListDownloader(MovieDownloader):
                         print(f"  ✓ Torrent added to qBittorrent and download started")
                     else:
                         print(f"  ⚠ Could not add to qBittorrent (torrent file saved locally)")
+                        return False
                 
                 return True
         

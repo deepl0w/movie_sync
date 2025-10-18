@@ -110,7 +110,7 @@ def run_movie_sync(config: dict):
         print("⏳ Waiting for workers to finish (max 10 seconds)...")
         monitor_worker.join(timeout=10)
         download_worker.join(timeout=10)
-        
+
         # Show final statistics
         print("\n" + "=" * 70)
         print("📊 Final Statistics")

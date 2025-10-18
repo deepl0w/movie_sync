@@ -76,28 +76,29 @@ class MonitorWorker(threading.Thread):
             # Find new movies
             new_movies = self.monitor.find_new_movies(current_watchlist, saved_watchlist)
             
+            added_count = 0
             if new_movies:
                 print(f"   🆕 Found {len(new_movies)} new movie(s):")
-                added_count = 0
-                
-                for movie in new_movies:
-                    # Check if already completed
-                    if self.queue_manager.is_completed(movie.get('id')):
-                        print(f"      ✓ {movie['title']} (already downloaded)")
-                        continue
-                    
-                    # Add to pending queue
-                    if self.queue_manager.add_to_pending(movie):
-                        director_info = f" - {movie.get('director', 'Unknown')}" if movie.get('director') != 'Unknown' else ''
-                        print(f"      + {movie['title']}{director_info}")
-                        added_count += 1
-                    else:
-                        print(f"      ⏭ {movie['title']} (already in queue)")
-                
-                if added_count > 0:
-                    print(f"   ✓ Added {added_count} movie(s) to download queue")
             else:
                 print("   ✓ No new movies found")
+               
+            for movie in current_watchlist:
+                # Check if already completed
+                if self.queue_manager.is_completed(movie.get('id')):
+                    print(f"      ✓ {movie['title']} (already downloaded)")
+                    continue
+                
+                # Add to pending queue
+                if self.queue_manager.add_to_pending(movie):
+                    director_info = f" - {movie.get('director', 'Unknown')}" if movie.get('director') != 'Unknown' else ''
+                    print(f"      + {movie['title']}{director_info}")
+                    added_count += 1
+                else:
+                    print(f"      ⏭ {movie['title']} (already in queue)")
+            
+            if added_count > 0:
+                print(f"   ✓ Added {added_count} movie(s) to download queue")
+
             
             # Save current watchlist
             self.monitor.save_watchlist(current_watchlist)
