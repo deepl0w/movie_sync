@@ -1,0 +1,352 @@
+"""
+Queue Manager for Movie Sync
+Handles communication between monitor and download threads using queues
+Manages pending, failed, and retry queues with JSON persistence
+"""
+
+import json
+import os
+import time
+import threading
+from pathlib import Path
+from typing import Dict, List, Optional
+from datetime import datetime
+
+
+class QueueManager:
+    """Thread-safe queue manager for movie download orchestration"""
+    
+    def __init__(self, config_dir: Optional[str] = None):
+        """
+        Initialize queue manager
+        
+        Args:
+            config_dir: Directory for queue files (defaults to ~/.movie_sync)
+        """
+        if config_dir is None:
+            config_dir = os.path.expanduser("~/.movie_sync")
+        
+        self.config_dir = Path(config_dir)
+        self.config_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Queue files
+        self.pending_file = self.config_dir / "queue_pending.json"
+        self.failed_file = self.config_dir / "queue_failed.json"
+        self.completed_file = self.config_dir / "queue_completed.json"
+        
+        # Thread locks for safe access
+        self.pending_lock = threading.Lock()
+        self.failed_lock = threading.Lock()
+        self.completed_lock = threading.Lock()
+        
+        # In-memory queues
+        self.pending_queue: List[Dict] = []
+        self.failed_queue: List[Dict] = []
+        self.completed_queue: List[Dict] = []
+        
+        # Load existing queues from disk
+        self._load_queues()
+    
+    def _load_queues(self) -> None:
+        """Load all queues from disk"""
+        self.pending_queue = self._load_json(self.pending_file, [])
+        self.failed_queue = self._load_json(self.failed_file, [])
+        self.completed_queue = self._load_json(self.completed_file, [])
+        
+        print(f"📋 Loaded queues: {len(self.pending_queue)} pending, "
+              f"{len(self.failed_queue)} failed, {len(self.completed_queue)} completed")
+    
+    def _load_json(self, filepath: Path, default: List) -> List:
+        """Load JSON file, return default if not found or invalid"""
+        if not filepath.exists():
+            return default
+        
+        try:
+            with open(filepath, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"⚠ Error loading {filepath.name}: {e}")
+            return default
+    
+    def _save_json(self, filepath: Path, data: List) -> None:
+        """Save data to JSON file atomically"""
+        try:
+            # Write to temporary file first
+            temp_file = filepath.with_suffix('.tmp')
+            with open(temp_file, 'w') as f:
+                json.dump(data, f, indent=2)
+            
+            # Atomic rename
+            temp_file.replace(filepath)
+        except Exception as e:
+            print(f"⚠ Error saving {filepath.name}: {e}")
+    
+    # === PENDING QUEUE OPERATIONS ===
+    
+    def add_to_pending(self, movie: Dict) -> bool:
+        """
+        Add movie to pending queue if not already present
+        
+        Args:
+            movie: Movie dictionary with at least 'id' and 'title'
+            
+        Returns:
+            True if added, False if already exists
+        """
+        with self.pending_lock:
+            # Check if already in pending queue
+            if any(m.get('id') == movie.get('id') for m in self.pending_queue):
+                return False
+            
+            # Check if already completed
+            if any(m.get('id') == movie.get('id') for m in self.completed_queue):
+                return False
+            
+            # Add timestamp and status
+            movie['queued_at'] = int(time.time())
+            movie['status'] = 'pending'
+            
+            self.pending_queue.append(movie)
+            self._save_json(self.pending_file, self.pending_queue)
+            return True
+    
+    def get_next_pending(self) -> Optional[Dict]:
+        """
+        Get and remove next movie from pending queue
+        
+        Returns:
+            Movie dict or None if queue is empty
+        """
+        with self.pending_lock:
+            if not self.pending_queue:
+                return None
+            
+            movie = self.pending_queue.pop(0)
+            self._save_json(self.pending_file, self.pending_queue)
+            return movie
+    
+    def get_pending_count(self) -> int:
+        """Get number of movies in pending queue"""
+        with self.pending_lock:
+            return len(self.pending_queue)
+    
+    # === FAILED QUEUE OPERATIONS ===
+    
+    def add_to_failed(self, movie: Dict, error: str, retry_after: Optional[int] = None) -> None:
+        """
+        Add movie to failed queue with retry information
+        
+        Args:
+            movie: Movie dictionary
+            error: Error message/reason for failure
+            retry_after: Unix timestamp when to retry (None = immediate)
+        """
+        with self.failed_lock:
+            # Check if already in failed queue
+            existing = next((m for m in self.failed_queue if m.get('id') == movie.get('id')), None)
+            
+            if existing:
+                # Update existing entry
+                existing['retry_count'] = existing.get('retry_count', 0) + 1
+                existing['last_error'] = error
+                existing['last_failed_at'] = int(time.time())
+                if retry_after:
+                    existing['retry_after'] = retry_after
+            else:
+                # Add new failed entry
+                movie['status'] = 'failed'
+                movie['retry_count'] = 1
+                movie['last_error'] = error
+                movie['last_failed_at'] = int(time.time())
+                if retry_after:
+                    movie['retry_after'] = retry_after
+                
+                self.failed_queue.append(movie)
+            
+            self._save_json(self.failed_file, self.failed_queue)
+    
+    def get_movies_ready_for_retry(self, max_retries: int = 5) -> List[Dict]:
+        """
+        Get movies from failed queue that are ready to retry
+        
+        Args:
+            max_retries: Maximum number of retries before giving up
+            
+        Returns:
+            List of movies ready for retry
+        """
+        with self.failed_lock:
+            current_time = int(time.time())
+            ready_movies = []
+            
+            for movie in self.failed_queue:
+                # Skip if exceeded max retries
+                if movie.get('retry_count', 0) >= max_retries:
+                    continue
+                
+                # Check if retry time has passed
+                retry_after = movie.get('retry_after', 0)
+                if current_time >= retry_after:
+                    ready_movies.append(movie)
+            
+            return ready_movies
+    
+    def move_failed_to_pending(self, movie: Dict) -> None:
+        """Move a movie from failed queue back to pending for retry"""
+        with self.failed_lock:
+            # Remove from failed queue
+            self.failed_queue = [m for m in self.failed_queue if m.get('id') != movie.get('id')]
+            self._save_json(self.failed_file, self.failed_queue)
+        
+        # Add to pending queue
+        movie['status'] = 'pending'
+        movie['retry_attempt'] = movie.get('retry_count', 0)
+        with self.pending_lock:
+            self.pending_queue.append(movie)
+            self._save_json(self.pending_file, self.pending_queue)
+    
+    def get_failed_count(self) -> int:
+        """Get number of movies in failed queue"""
+        with self.failed_lock:
+            return len(self.failed_queue)
+    
+    def get_permanent_failures(self, max_retries: int = 5) -> List[Dict]:
+        """Get movies that have permanently failed (exceeded max retries)"""
+        with self.failed_lock:
+            return [m for m in self.failed_queue if m.get('retry_count', 0) >= max_retries]
+    
+    # === COMPLETED QUEUE OPERATIONS ===
+    
+    def add_to_completed(self, movie: Dict) -> None:
+        """Mark movie as successfully completed"""
+        with self.completed_lock:
+            # Remove from failed queue if present
+            with self.failed_lock:
+                self.failed_queue = [m for m in self.failed_queue if m.get('id') != movie.get('id')]
+                self._save_json(self.failed_file, self.failed_queue)
+            
+            # Check if already completed
+            if any(m.get('id') == movie.get('id') for m in self.completed_queue):
+                return
+            
+            movie['status'] = 'completed'
+            movie['completed_at'] = int(time.time())
+            
+            self.completed_queue.append(movie)
+            self._save_json(self.completed_file, self.completed_queue)
+    
+    def is_completed(self, movie_id: str) -> bool:
+        """Check if movie has been completed"""
+        with self.completed_lock:
+            return any(m.get('id') == movie_id for m in self.completed_queue)
+    
+    def get_completed_count(self) -> int:
+        """Get number of completed movies"""
+        with self.completed_lock:
+            return len(self.completed_queue)
+    
+    # === STATISTICS & MONITORING ===
+    
+    def get_statistics(self) -> Dict:
+        """Get queue statistics"""
+        return {
+            'pending': self.get_pending_count(),
+            'failed': self.get_failed_count(),
+            'completed': self.get_completed_count(),
+            'permanent_failures': len(self.get_permanent_failures())
+        }
+    
+    def cleanup_old_completed(self, days: int = 30) -> int:
+        """
+        Remove completed entries older than specified days
+        
+        Args:
+            days: Number of days to keep completed entries
+            
+        Returns:
+            Number of entries removed
+        """
+        cutoff_time = int(time.time()) - (days * 24 * 60 * 60)
+        
+        with self.completed_lock:
+            original_count = len(self.completed_queue)
+            self.completed_queue = [
+                m for m in self.completed_queue
+                if m.get('completed_at', 0) > cutoff_time
+            ]
+            self._save_json(self.completed_file, self.completed_queue)
+            
+            removed = original_count - len(self.completed_queue)
+            if removed > 0:
+                print(f"🧹 Cleaned up {removed} old completed entries")
+            return removed
+    
+    def reset_failed_movie(self, movie_id: str) -> bool:
+        """
+        Manually reset a failed movie to pending
+        
+        Args:
+            movie_id: ID of the movie to reset
+            
+        Returns:
+            True if movie was found and reset
+        """
+        with self.failed_lock:
+            movie = next((m for m in self.failed_queue if m.get('id') == movie_id), None)
+            if not movie:
+                return False
+            
+            self.failed_queue = [m for m in self.failed_queue if m.get('id') != movie_id]
+            self._save_json(self.failed_file, self.failed_queue)
+        
+        # Reset retry count and add to pending
+        movie['retry_count'] = 0
+        movie.pop('last_error', None)
+        movie.pop('retry_after', None)
+        self.add_to_pending(movie)
+        return True
+
+
+if __name__ == "__main__":
+    # Test the queue manager
+    print("Queue Manager Test")
+    print("=" * 60)
+    
+    # Create test instance
+    qm = QueueManager()
+    
+    # Test adding to pending
+    print("\n1. Adding movies to pending queue...")
+    test_movies = [
+        {'id': 'tt0133093', 'title': 'The Matrix', 'year': 1999},
+        {'id': 'tt0234215', 'title': 'The Matrix Reloaded', 'year': 2003},
+        {'id': 'tt0242653', 'title': 'The Matrix Revolutions', 'year': 2003},
+    ]
+    
+    for movie in test_movies:
+        added = qm.add_to_pending(movie)
+        print(f"  {'✓' if added else '✗'} {movie['title']}")
+    
+    # Test getting from pending
+    print("\n2. Processing pending queue...")
+    movie = qm.get_next_pending()
+    if movie:
+        print(f"  Got: {movie['title']}")
+        
+        # Simulate failure
+        print(f"  Simulating failure...")
+        retry_time = int(time.time()) + 300  # Retry in 5 minutes
+        qm.add_to_failed(movie, "Not found on FileList.io", retry_time)
+    
+    # Test statistics
+    print("\n3. Queue statistics:")
+    stats = qm.get_statistics()
+    for key, value in stats.items():
+        print(f"  {key}: {value}")
+    
+    # Test retry mechanism
+    print("\n4. Testing retry mechanism...")
+    ready = qm.get_movies_ready_for_retry()
+    print(f"  Movies ready for retry: {len(ready)}")
+    
+    print("\n✓ Queue manager test complete")
