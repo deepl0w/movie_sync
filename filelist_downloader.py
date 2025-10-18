@@ -231,13 +231,13 @@ class FileListDownloader(MovieDownloader):
             print("  ✗ Request timed out")
             return []
         except requests.exceptions.RequestException as e:
-            print(f"  ✗ Network error: {e}")
+            print(f"  ✗ Network error occurred")
             return []
         except json.JSONDecodeError as e:
-            print(f"  ✗ Failed to parse API response: {e}")
+            print(f"  ✗ Failed to parse API response")
             return []
         except Exception as e:
-            print(f"  ✗ Search error: {e}")
+            print(f"  ✗ Search error occurred")
             return []
     
     def _download_torrent_file(self, torrent_id: str, movie_title: str) -> Optional[str]:
@@ -285,10 +285,10 @@ class FileListDownloader(MovieDownloader):
             return str(torrent_path)
             
         except requests.exceptions.RequestException as e:
-            print(f"  ✗ Download failed: {e}")
+            print(f"  ✗ Download failed (network error)")
             return None
         except Exception as e:
-            print(f"  ✗ Unexpected error downloading torrent: {e}")
+            print(f"  ✗ Unexpected error downloading torrent")
             return None
     
     def _select_best_torrent(self, results: List[Dict]) -> Optional[Dict]:
