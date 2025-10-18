@@ -479,3 +479,239 @@ class TestFileListDownloader:
         assert result is False
         captured = capsys.readouterr()
         assert "No torrents found" in captured.out
+
+
+class TestFuzzyMatching:
+    """Test cases for fuzzy matching functionality in FileListDownloader"""
+    
+    def test_find_existing_torrent_exact_match(self, temp_dir, mocker):
+        """Test finding torrent with exact substring match"""
+        mock_creds = mocker.patch('filelist_downloader.CredentialsManager')
+        mock_instance = mock_creds.return_value
+        mock_instance.get_filelist_credentials.return_value = ("user", "pass")
+        mocker.patch('filelist_downloader.QBittorrentManager', return_value=None)
+        
+        # Create test torrent file
+        torrent_dir = temp_dir / "torrents"
+        torrent_dir.mkdir()
+        torrent_file = torrent_dir / "Enter.the.Void.2009.1080p.BluRay.x264-DON.torrent"
+        torrent_file.write_text("fake torrent content")
+        
+        downloader = FileListDownloader(
+            queue_file=str(temp_dir / "queue.json"),
+            torrent_dir=str(torrent_dir),
+            use_qbittorrent=False
+        )
+        
+        movie = {
+            'title': 'Enter the Void',
+            'year': 2009
+        }
+        
+        result = downloader._find_existing_torrent(movie)
+        
+        assert result is not None
+        assert result.name == "Enter.the.Void.2009.1080p.BluRay.x264-DON.torrent"
+    
+    def test_find_existing_torrent_fuzzy_match(self, temp_dir, mocker):
+        """Test finding torrent with fuzzy matching"""
+        mock_creds = mocker.patch('filelist_downloader.CredentialsManager')
+        mock_instance = mock_creds.return_value
+        mock_instance.get_filelist_credentials.return_value = ("user", "pass")
+        mocker.patch('filelist_downloader.QBittorrentManager', return_value=None)
+        
+        # Create test torrent file with slightly different naming
+        torrent_dir = temp_dir / "torrents"
+        torrent_dir.mkdir()
+        torrent_file = torrent_dir / "Blade.Runner.1982.Directors.Cut.1080p.BluRay.x264.torrent"
+        torrent_file.write_text("fake torrent content")
+        
+        downloader = FileListDownloader(
+            queue_file=str(temp_dir / "queue.json"),
+            torrent_dir=str(torrent_dir),
+            use_qbittorrent=False
+        )
+        
+        movie = {
+            'title': 'Blade Runner',
+            'year': 1982
+        }
+        
+        result = downloader._find_existing_torrent(movie)
+        
+        assert result is not None
+        assert result.name == "Blade.Runner.1982.Directors.Cut.1080p.BluRay.x264.torrent"
+    
+    def test_find_existing_torrent_no_match(self, temp_dir, mocker):
+        """Test when no matching torrent is found"""
+        mock_creds = mocker.patch('filelist_downloader.CredentialsManager')
+        mock_instance = mock_creds.return_value
+        mock_instance.get_filelist_credentials.return_value = ("user", "pass")
+        mocker.patch('filelist_downloader.QBittorrentManager', return_value=None)
+        
+        # Create test torrent file for different movie
+        torrent_dir = temp_dir / "torrents"
+        torrent_dir.mkdir()
+        torrent_file = torrent_dir / "Heat.1995.1080p.BluRay.DTS.x264-HiDt.torrent"
+        torrent_file.write_text("fake torrent content")
+        
+        downloader = FileListDownloader(
+            queue_file=str(temp_dir / "queue.json"),
+            torrent_dir=str(torrent_dir),
+            use_qbittorrent=False
+        )
+        
+        movie = {
+            'title': 'Blade Runner',
+            'year': 1982
+        }
+        
+        result = downloader._find_existing_torrent(movie)
+        
+        assert result is None
+    
+    def test_find_existing_torrent_year_mismatch(self, temp_dir, mocker):
+        """Test that year mismatch prevents match"""
+        mock_creds = mocker.patch('filelist_downloader.CredentialsManager')
+        mock_instance = mock_creds.return_value
+        mock_instance.get_filelist_credentials.return_value = ("user", "pass")
+        mocker.patch('filelist_downloader.QBittorrentManager', return_value=None)
+        
+        # Create test torrent file with different year
+        torrent_dir = temp_dir / "torrents"
+        torrent_dir.mkdir()
+        torrent_file = torrent_dir / "Heat.1995.1080p.BluRay.DTS.x264-HiDt.torrent"
+        torrent_file.write_text("fake torrent content")
+        
+        downloader = FileListDownloader(
+            queue_file=str(temp_dir / "queue.json"),
+            torrent_dir=str(torrent_dir),
+            use_qbittorrent=False
+        )
+        
+        movie = {
+            'title': 'Heat',
+            'year': 2020  # Wrong year
+        }
+        
+        result = downloader._find_existing_torrent(movie)
+        
+        assert result is None
+    
+    def test_find_existing_torrent_special_characters(self, temp_dir, mocker):
+        """Test finding torrent with special characters in title"""
+        mock_creds = mocker.patch('filelist_downloader.CredentialsManager')
+        mock_instance = mock_creds.return_value
+        mock_instance.get_filelist_credentials.return_value = ("user", "pass")
+        mocker.patch('filelist_downloader.QBittorrentManager', return_value=None)
+        
+        # Create test torrent file
+        torrent_dir = temp_dir / "torrents"
+        torrent_dir.mkdir()
+        torrent_file = torrent_dir / "Moulin.Rouge.2001.1080p.BluRay.x264.torrent"
+        torrent_file.write_text("fake torrent content")
+        
+        downloader = FileListDownloader(
+            queue_file=str(temp_dir / "queue.json"),
+            torrent_dir=str(torrent_dir),
+            use_qbittorrent=False
+        )
+        
+        movie = {
+            'title': 'Moulin Rouge!',  # Has exclamation mark
+            'year': 2001
+        }
+        
+        result = downloader._find_existing_torrent(movie)
+        
+        assert result is not None
+    
+    def test_find_existing_torrent_no_year(self, temp_dir, mocker):
+        """Test finding torrent when year is not specified"""
+        mock_creds = mocker.patch('filelist_downloader.CredentialsManager')
+        mock_instance = mock_creds.return_value
+        mock_instance.get_filelist_credentials.return_value = ("user", "pass")
+        mocker.patch('filelist_downloader.QBittorrentManager', return_value=None)
+        
+        # Create test torrent file
+        torrent_dir = temp_dir / "torrents"
+        torrent_dir.mkdir()
+        torrent_file = torrent_dir / "2046.2004.1080p.BluRay.x264-CiNEFiLE.torrent"
+        torrent_file.write_text("fake torrent content")
+        
+        downloader = FileListDownloader(
+            queue_file=str(temp_dir / "queue.json"),
+            torrent_dir=str(torrent_dir),
+            use_qbittorrent=False
+        )
+        
+        movie = {
+            'title': '2046',
+            'year': None  # No year specified
+        }
+        
+        result = downloader._find_existing_torrent(movie)
+        
+        assert result is not None
+    
+    def test_find_existing_torrent_multiple_matches(self, temp_dir, mocker):
+        """Test finding best match when multiple torrents exist"""
+        mock_creds = mocker.patch('filelist_downloader.CredentialsManager')
+        mock_instance = mock_creds.return_value
+        mock_instance.get_filelist_credentials.return_value = ("user", "pass")
+        mocker.patch('filelist_downloader.QBittorrentManager', return_value=None)
+        
+        # Create multiple test torrent files
+        torrent_dir = temp_dir / "torrents"
+        torrent_dir.mkdir()
+        
+        # Less exact match
+        torrent1 = torrent_dir / "Blade.Runner.The.Final.Cut.1982.1080p.torrent"
+        torrent1.write_text("fake torrent content")
+        
+        # Exact match
+        torrent2 = torrent_dir / "Blade.Runner.1982.1080p.BluRay.x264.torrent"
+        torrent2.write_text("fake torrent content")
+        
+        downloader = FileListDownloader(
+            queue_file=str(temp_dir / "queue.json"),
+            torrent_dir=str(torrent_dir),
+            use_qbittorrent=False
+        )
+        
+        movie = {
+            'title': 'Blade Runner',
+            'year': 1982
+        }
+        
+        result = downloader._find_existing_torrent(movie)
+        
+        # Should return the exact match (substring match takes priority)
+        assert result is not None
+        assert result.name == "Blade.Runner.1982.1080p.BluRay.x264.torrent"
+    
+    def test_find_existing_torrent_empty_directory(self, temp_dir, mocker):
+        """Test when torrent directory is empty"""
+        mock_creds = mocker.patch('filelist_downloader.CredentialsManager')
+        mock_instance = mock_creds.return_value
+        mock_instance.get_filelist_credentials.return_value = ("user", "pass")
+        mocker.patch('filelist_downloader.QBittorrentManager', return_value=None)
+        
+        # Create empty torrent directory
+        torrent_dir = temp_dir / "torrents"
+        torrent_dir.mkdir()
+        
+        downloader = FileListDownloader(
+            queue_file=str(temp_dir / "queue.json"),
+            torrent_dir=str(torrent_dir),
+            use_qbittorrent=False
+        )
+        
+        movie = {
+            'title': 'Enter the Void',
+            'year': 2009
+        }
+        
+        result = downloader._find_existing_torrent(movie)
+        
+        assert result is None

@@ -543,17 +543,3 @@ class FileListDownloader(MovieDownloader):
             time.sleep(2)
         
         print("\n✓ Download queue processed.")
-
-
-if __name__ == "__main__":
-    # Note: Avoid running tests directly - FileList.io has a 150 API calls/hour limit
-    # Use main.py to process your download queue instead
-    print("FileList.io Torrent Downloader")
-    print("=" * 60)
-    print("⚠ This module should be used via main.py, not run directly.")
-    print("  FileList.io API has a limit of 150 calls per hour.")
-    print("\nTo download movies:")
-    print("  python main.py")
-    print("\nConfiguration:")
-    print("  Edit filelist_config.json to adjust quality priorities")
-    print("=" * 60)
