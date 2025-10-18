@@ -201,9 +201,6 @@ After 5 failed attempts, movies are marked as permanent failures but remain in t
 ## 🔍 Example Output
 
 ```
-## 🔍 Example Output
-
-```
 ======================================================================
 🚀 MOVIE SYNC - Letterboxd to FileList.io
 ======================================================================
@@ -336,19 +333,6 @@ To reset credentials, delete the respective `.enc` file and run again.
 - Filter by "Movies" category or "movie_sync" tag in qBittorrent
 
 ## 🎯 Advanced Usage
-
-### Disable qBittorrent Integration
-
-In `~/.movie_sync/filelist_config.json`:
-```json
-{
-  "qbittorrent": {
-    "enabled": false
-  }
-}
-```
-
-Torrents will download to `~/Downloads` but won't auto-add to qBittorrent.
 
 ### Remote qBittorrent
 
