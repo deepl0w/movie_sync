@@ -18,6 +18,9 @@ class Config:
         "backoff_multiplier": 2.0,  # Exponential backoff multiplier
         # Threading
         "use_threads": True,  # Enable threaded mode
+        # Cleanup/Deletion configuration
+        "enable_removal_cleanup": False,  # Toggle for automatic deletion of removed movies
+        "removal_grace_period": 604800,  # Grace period before deletion (7 days in seconds)
     }
     
     @staticmethod

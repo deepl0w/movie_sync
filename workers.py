@@ -98,7 +98,12 @@ class MonitorWorker(threading.Thread):
             
             if added_count > 0:
                 print(f"   ✓ Added {added_count} movie(s) to download queue")
-
+            
+            # Track removed movies (movies no longer in watchlist)
+            current_ids = [str(m.get('id', '')) for m in current_watchlist if m.get('id')]
+            removed_count = self.queue_manager.mark_movies_as_removed(current_ids)
+            if removed_count > 0:
+                print(f"   📤 Marked {removed_count} movie(s) for removal (no longer in watchlist)")
             
             # Save current watchlist
             self.monitor.save_watchlist(current_watchlist)
@@ -106,7 +111,8 @@ class MonitorWorker(threading.Thread):
             # Show queue statistics
             stats = self.queue_manager.get_statistics()
             print(f"   📊 Queue status: {stats['pending']} pending, "
-                  f"{stats['failed']} failed, {stats['completed']} completed")
+                  f"{stats['failed']} failed, {stats['completed']} completed, "
+                  f"{stats['removed']} removed")
             
         except Exception as e:
             print(f"   ✗ Error checking watchlist: {e}")
@@ -327,6 +333,118 @@ class DownloadWorker(threading.Thread):
         """Stop the worker thread gracefully"""
         print("🛑 Stopping download worker...")
         self.stop_event.set()
+
+
+class CleanupWorker(threading.Thread):
+    """
+    Worker thread that handles cleanup of removed movies
+    Deletes torrents, files, and qBittorrent entries after grace period
+    """
+    
+    def __init__(self, queue_manager: QueueManager, cleanup_service,
+                 check_interval: int = 3600, grace_period: int = 604800,
+                 enabled: bool = False):
+        """
+        Initialize cleanup worker
+        
+        Args:
+            queue_manager: Shared queue manager instance
+            cleanup_service: CleanupService instance
+            check_interval: Seconds between cleanup checks (default: 1 hour)
+            grace_period: Seconds before deletion after removal (default: 7 days)
+            enabled: Whether cleanup is enabled (default: False)
+        """
+        super().__init__(daemon=True, name="CleanupWorker")
+        
+        self.queue_manager = queue_manager
+        self.cleanup_service = cleanup_service
+        self.check_interval = check_interval
+        self.grace_period = grace_period
+        self.enabled = enabled
+        
+        self.running = False
+        self.stop_event = threading.Event()
+    
+    def run(self):
+        """Main worker loop"""
+        self.running = True
+        
+        if not self.enabled:
+            print(f"🧹 Cleanup worker started (DISABLED - no deletions will occur)")
+        else:
+            print(f"🧹 Cleanup worker started (grace period: {self.grace_period}s, "
+                  f"check interval: {self.check_interval}s)")
+        
+        # Run periodically
+        while not self.stop_event.is_set():
+            # Wait for check_interval or until stopped
+            if self.stop_event.wait(timeout=self.check_interval):
+                break
+            
+            if self.enabled:
+                self._process_removals()
+        
+        self.running = False
+        print("🧹 Cleanup worker stopped")
+    
+    def _process_removals(self):
+        """Process movies ready for deletion"""
+        try:
+            # Get movies ready for deletion
+            movies_to_delete = self.queue_manager.get_movies_ready_for_deletion(self.grace_period)
+            
+            if not movies_to_delete:
+                return
+            
+            print(f"\n🧹 Processing {len(movies_to_delete)} movie(s) for cleanup...")
+            
+            for movie in movies_to_delete:
+                title = movie.get('title', 'Unknown')
+                year = movie.get('year', '')
+                movie_id = str(movie.get('id', ''))
+                removed_at = movie.get('removed_at', 0)
+                
+                if not movie_id:
+                    continue
+                
+                print(f"\n   🗑️  Cleaning up: {title} ({year})")
+                print(f"      Removed from watchlist: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(removed_at))}")
+                
+                # Perform cleanup
+                results = self.cleanup_service.cleanup_movie(
+                    movie,
+                    delete_files=True,
+                    delete_torrent=True,
+                    remove_from_qbt=True
+                )
+                
+                # Check if cleanup was successful
+                if results['files_deleted'] or results['torrent_deleted'] or results['qbt_removed']:
+                    # Remove from removed queue
+                    self.queue_manager.remove_from_removed_queue(movie_id)
+                    print(f"      ✓ Cleanup complete for: {title}")
+                else:
+                    print(f"      ⚠️  No files found to delete for: {title}")
+                    # Still remove from queue even if nothing was found
+                    self.queue_manager.remove_from_removed_queue(movie_id)
+                
+                if results['errors']:
+                    print(f"      ⚠️  Errors during cleanup:")
+                    for error in results['errors']:
+                        print(f"         - {error}")
+            
+            print(f"✓ Cleanup processing complete")
+            
+        except Exception as e:
+            print(f"✗ Error during cleanup: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def stop(self):
+        """Stop the worker thread gracefully"""
+        print("🛑 Stopping cleanup worker...")
+        self.stop_event.set()
+
 
 
 if __name__ == "__main__":

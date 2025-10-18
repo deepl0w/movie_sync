@@ -33,16 +33,19 @@ class QueueManager:
         self.pending_file = self.config_dir / "queue_pending.json"
         self.failed_file = self.config_dir / "queue_failed.json"
         self.completed_file = self.config_dir / "queue_completed.json"
+        self.removed_file = self.config_dir / "queue_removed.json"
         
         # Thread locks for safe access
         self.pending_lock = threading.Lock()
         self.failed_lock = threading.Lock()
         self.completed_lock = threading.Lock()
+        self.removed_lock = threading.Lock()
         
         # In-memory queues
         self.pending_queue: List[Dict] = []
         self.failed_queue: List[Dict] = []
         self.completed_queue: List[Dict] = []
+        self.removed_queue: List[Dict] = []
         
         # Load existing queues from disk
         self._load_queues()
@@ -52,9 +55,11 @@ class QueueManager:
         self.pending_queue = self._load_json(self.pending_file, [])
         self.failed_queue = self._load_json(self.failed_file, [])
         self.completed_queue = self._load_json(self.completed_file, [])
+        self.removed_queue = self._load_json(self.removed_file, [])
         
         print(f"📋 Loaded queues: {len(self.pending_queue)} pending, "
-              f"{len(self.failed_queue)} failed, {len(self.completed_queue)} completed")
+              f"{len(self.failed_queue)} failed, {len(self.completed_queue)} completed, "
+              f"{len(self.removed_queue)} removed")
     
     def _load_json(self, filepath: Path, default: List) -> List:
         """Load JSON file, return default if not found or invalid"""
@@ -253,6 +258,7 @@ class QueueManager:
             'pending': self.get_pending_count(),
             'failed': self.get_failed_count(),
             'completed': self.get_completed_count(),
+            'removed': self.get_removed_count(),
             'permanent_failures': len(self.get_permanent_failures())
         }
     
@@ -303,5 +309,149 @@ class QueueManager:
         movie['retry_count'] = 0
         movie.pop('last_error', None)
         movie.pop('retry_after', None)
+        self.add_to_pending(movie)
+        return True
+    
+    # === REMOVED QUEUE OPERATIONS ===
+    
+    def add_to_removed(self, movie: Dict) -> bool:
+        """
+        Add movie to removed queue (for movies no longer in watchlist)
+        
+        Args:
+            movie: Movie dictionary
+            
+        Returns:
+            True if added, False if already exists
+        """
+        with self.removed_lock:
+            # Check if already in removed queue
+            if any(m.get('id') == movie.get('id') for m in self.removed_queue):
+                return False
+            
+            # Add timestamp
+            movie['removed_at'] = int(time.time())
+            movie['status'] = 'removed'
+            
+            self.removed_queue.append(movie)
+            self._save_json(self.removed_file, self.removed_queue)
+            return True
+    
+    def get_movies_ready_for_deletion(self, grace_period: int = 604800) -> List[Dict]:
+        """
+        Get movies from removed queue that are ready for deletion
+        
+        Args:
+            grace_period: Grace period in seconds (default: 7 days)
+            
+        Returns:
+            List of movies ready for deletion
+        """
+        with self.removed_lock:
+            current_time = int(time.time())
+            ready_movies = []
+            
+            for movie in self.removed_queue:
+                removed_at = movie.get('removed_at', 0)
+                if current_time >= (removed_at + grace_period):
+                    ready_movies.append(movie)
+            
+            return ready_movies
+    
+    def remove_from_removed_queue(self, movie_id: str) -> bool:
+        """
+        Remove a movie from the removed queue (after deletion or restoration)
+        
+        Args:
+            movie_id: ID of the movie to remove
+            
+        Returns:
+            True if movie was found and removed
+        """
+        with self.removed_lock:
+            original_len = len(self.removed_queue)
+            self.removed_queue = [m for m in self.removed_queue if m.get('id') != movie_id]
+            
+            if len(self.removed_queue) < original_len:
+                self._save_json(self.removed_file, self.removed_queue)
+                return True
+            return False
+    
+    def mark_movies_as_removed(self, current_watchlist_ids: List[str]) -> int:
+        """
+        Mark movies as removed if they're no longer in the watchlist
+        Checks completed movies and moves them to removed queue if not in watchlist
+        
+        Args:
+            current_watchlist_ids: List of movie IDs currently in watchlist
+            
+        Returns:
+            Number of movies marked as removed
+        """
+        removed_count = 0
+        current_watchlist_set = set(current_watchlist_ids)
+        
+        # Check completed movies
+        with self.completed_lock:
+            movies_to_remove = []
+            for movie in self.completed_queue:
+                if movie.get('id') not in current_watchlist_set:
+                    movies_to_remove.append(movie)
+            
+            # Remove from completed queue
+            for movie in movies_to_remove:
+                self.completed_queue = [m for m in self.completed_queue if m.get('id') != movie.get('id')]
+                if self.add_to_removed(movie):
+                    removed_count += 1
+                    print(f"📤 Marked for removal: {movie.get('title', 'Unknown')} (removed from watchlist)")
+            
+            if movies_to_remove:
+                self._save_json(self.completed_file, self.completed_queue)
+        
+        # Also check pending queue and remove if not in watchlist
+        with self.pending_lock:
+            movies_to_remove = []
+            for movie in self.pending_queue:
+                if movie.get('id') not in current_watchlist_set:
+                    movies_to_remove.append(movie)
+            
+            for movie in movies_to_remove:
+                self.pending_queue = [m for m in self.pending_queue if m.get('id') != movie.get('id')]
+                if self.add_to_removed(movie):
+                    removed_count += 1
+                    print(f"📤 Marked for removal: {movie.get('title', 'Unknown')} (removed from watchlist)")
+            
+            if movies_to_remove:
+                self._save_json(self.pending_file, self.pending_queue)
+        
+        return removed_count
+    
+    def get_removed_count(self) -> int:
+        """Get number of movies in removed queue"""
+        with self.removed_lock:
+            return len(self.removed_queue)
+    
+    def restore_removed_movie(self, movie_id: str) -> bool:
+        """
+        Restore a removed movie back to pending queue
+        (useful if movie was re-added to watchlist)
+        
+        Args:
+            movie_id: ID of the movie to restore
+            
+        Returns:
+            True if movie was found and restored
+        """
+        with self.removed_lock:
+            movie = next((m for m in self.removed_queue if m.get('id') == movie_id), None)
+            if not movie:
+                return False
+            
+            self.removed_queue = [m for m in self.removed_queue if m.get('id') != movie_id]
+            self._save_json(self.removed_file, self.removed_queue)
+        
+        # Add back to pending
+        movie['status'] = 'pending'
+        movie.pop('removed_at', None)
         self.add_to_pending(movie)
         return True

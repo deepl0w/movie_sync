@@ -12,6 +12,7 @@ Automatically sync your Letterboxd watchlist with FileList.io. This tool monitor
 - 🧠 **Smart Duplicate Detection** - Uses fuzzy matching to skip existing downloads
 - 💾 **Crash Recovery** - Queue persistence prevents data loss
 - 🆓 **Freeleech Priority** - Optionally prefer ratio-friendly torrents
+- 🧹 **Automatic Cleanup** - Optionally removes movies deleted from watchlist (with configurable grace period)
 
 ## 🚀 Quick Start
 
@@ -157,6 +158,11 @@ Queue files are in `~/.movie_sync/`:
 - `username` - Your Letterboxd username
 - `check_interval` - Seconds between watchlist checks (default: 3600 = 1 hour)
 - `download_directory` - Where movies are saved
+- `retry_interval` - Base interval for retrying failed downloads (default: 3600 = 1 hour)
+- `max_retries` - Maximum retry attempts before permanent failure (default: 5)
+- `backoff_multiplier` - Exponential backoff multiplier for retries (default: 2.0)
+- `enable_removal_cleanup` - Enable automatic cleanup of removed movies (default: false)
+- `removal_grace_period` - Seconds to wait before deleting removed movies (default: 604800 = 7 days)
 - `retry_interval` - Base retry interval in seconds (default: 3600 = 1 hour)
 - `max_retries` - Maximum retry attempts (default: 5)
 - `backoff_multiplier` - Exponential backoff multiplier (default: 2.0)
@@ -237,6 +243,77 @@ After 5 failed attempts, movies are marked as permanent failures but remain in t
    ✓ Added to qBittorrent
 ✅ Download completed: The Matrix (1999)
 ```
+
+## 🧹 Automatic Cleanup (Optional)
+
+Movie Sync can automatically clean up movies you remove from your Letterboxd watchlist.
+
+### How It Works
+
+1. **Tracking**: When a movie is removed from your watchlist, it's moved to a "removed" queue
+2. **Grace Period**: The movie waits for a configurable period (default: 7 days)
+3. **Cleanup**: After the grace period, the following are deleted:
+   - Downloaded movie files
+   - Torrent file (.torrent)
+   - qBittorrent entry (with files)
+
+### Enable Cleanup
+
+**⚠️ Cleanup is disabled by default for safety**
+
+To enable, add to `~/.movie_sync/config.json`:
+
+```json
+{
+  "enable_removal_cleanup": true,
+  "removal_grace_period": 604800
+}
+```
+
+### Grace Period Examples
+
+```json
+"removal_grace_period": 86400     // 1 day
+"removal_grace_period": 259200    // 3 days
+"removal_grace_period": 604800    // 7 days (default)
+"removal_grace_period": 1209600   // 14 days
+```
+
+### Safety Features
+
+- **Disabled by default** - Must be explicitly enabled
+- **Grace period** - Time to change your mind before deletion
+- **Fuzzy matching** - Uses same algorithm as download detection (85% similarity + year verification)
+- **Logged operations** - All deletions are logged for review
+
+### Example Output
+
+```
+📺 Checking Letterboxd watchlist...
+   Found 50 movies in watchlist
+   📤 Marked for removal: Old Movie (2010) (removed from watchlist)
+   📊 Queue status: 5 pending, 2 failed, 48 completed, 1 removed
+
+🧹 Processing 1 movie(s) for cleanup...
+   🗑️  Cleaning up: Old Movie (2010)
+      Removed from watchlist: 2025-10-11 15:30:22
+  🗑️  Deleted movie files for: Old Movie (2010)
+  🗑️  Deleted torrent file for: Old Movie (2010)
+  🗑️  Removed from qBittorrent: Old Movie (2010)
+      ✓ Cleanup complete for: Old Movie
+```
+
+### Monitor Removed Movies
+
+```bash
+# View removed queue
+cat ~/.movie_sync/queue_removed.json | jq '.'
+
+# Count movies waiting for cleanup
+jq 'length' ~/.movie_sync/queue_removed.json
+```
+
+**For more details, see [doc/cleanup.md](doc/cleanup.md)**
 
 ## 📝 Notes
 

@@ -26,7 +26,8 @@ import sys
 
 from config import Config
 from queue_manager import QueueManager
-from workers import MonitorWorker, DownloadWorker
+from workers import MonitorWorker, DownloadWorker, CleanupWorker
+from cleanup_service import CleanupService
 
 try:
     from filelist_downloader import FileListDownloader
@@ -52,6 +53,14 @@ def run_movie_sync(config: dict):
     print(f"🔄 Retry interval: {config.get('retry_interval', 3600)}s ({config.get('retry_interval', 3600)//60} minutes)")
     print(f"🔁 Max retries: {config.get('max_retries', 5)}")
     print(f"📁 Download directory: {config.get('download_directory', '~/Downloads')}")
+    
+    # Cleanup configuration
+    cleanup_enabled = config.get('enable_removal_cleanup', False)
+    grace_period = config.get('removal_grace_period', 604800)
+    grace_days = grace_period // 86400
+    print(f"🧹 Cleanup: {'ENABLED' if cleanup_enabled else 'DISABLED'} "
+          f"(grace period: {grace_days} days)")
+    
     print("\n💡 Press Ctrl+C to stop gracefully")
     print("=" * 70)
     
@@ -90,6 +99,21 @@ def run_movie_sync(config: dict):
         backoff_multiplier=config.get('backoff_multiplier', 2.0)
     )
     
+    print("🧹 Creating cleanup worker...")
+    torrent_dir_path = downloader.torrent_dir if hasattr(downloader, 'torrent_dir') else os.path.expanduser("~/.movie_sync/torrents")
+    cleanup_service = CleanupService(
+        download_dir=config.get('download_directory', os.path.expanduser("~/Downloads")),
+        torrent_dir=str(torrent_dir_path),
+        qbt_manager=downloader.qbt_manager if hasattr(downloader, 'qbt_manager') else None
+    )
+    cleanup_worker = CleanupWorker(
+        queue_manager=queue_manager,
+        cleanup_service=cleanup_service,
+        check_interval=3600,  # Check every hour
+        grace_period=config.get('removal_grace_period', 604800),
+        enabled=config.get('enable_removal_cleanup', False)
+    )
+    
     # Set up graceful shutdown
     shutdown_initiated = False
     
@@ -106,10 +130,12 @@ def run_movie_sync(config: dict):
         
         monitor_worker.stop()
         download_worker.stop()
+        cleanup_worker.stop()
         
         print("⏳ Waiting for workers to finish (max 10 seconds)...")
         monitor_worker.join(timeout=10)
         download_worker.join(timeout=10)
+        cleanup_worker.join(timeout=10)
 
         # Show final statistics
         print("\n" + "=" * 70)
@@ -119,6 +145,7 @@ def run_movie_sync(config: dict):
         print(f"   Pending: {stats['pending']}")
         print(f"   Failed: {stats['failed']}")
         print(f"   Completed: {stats['completed']}")
+        print(f"   Removed: {stats['removed']}")
         print(f"   Permanent failures: {stats['permanent_failures']}")
         
         if stats['permanent_failures'] > 0:
@@ -136,6 +163,7 @@ def run_movie_sync(config: dict):
     print("\n🚀 Starting workers...")
     monitor_worker.start()
     download_worker.start()
+    cleanup_worker.start()
     
     print("✅ Workers started successfully")
     print("\n" + "=" * 70)
@@ -151,9 +179,10 @@ def run_movie_sync(config: dict):
             current_time = time.time()
             if current_time - last_stats_time >= stats_interval:
                 stats = queue_manager.get_statistics()
-                if stats['pending'] > 0 or stats['failed'] > 0:
+                if stats['pending'] > 0 or stats['failed'] > 0 or stats['removed'] > 0:
                     print(f"\n📊 Status: {stats['pending']} pending, "
-                          f"{stats['failed']} failed, {stats['completed']} completed")
+                          f"{stats['failed']} failed, {stats['completed']} completed, "
+                          f"{stats['removed']} removed")
                 last_stats_time = current_time
     
     except KeyboardInterrupt:
