@@ -322,7 +322,8 @@ class DownloadWorker(threading.Thread):
             # Move to failed queue with space limit marker
             movie['failed_reason'] = 'space_limit'
             error_msg = f"Download space limit reached ({self.max_download_space_gb} GB)"
-            self.queue_manager.add_to_failed(movie, error_msg, retry_after=None)
+            retry_after = self._calculate_retry_time(movie.get('retry_count', 0))
+            self.queue_manager.add_to_failed(movie, error_msg, retry_after)
             return
         
         if force_download:
