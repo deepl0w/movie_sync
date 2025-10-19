@@ -322,6 +322,11 @@
             color: white;
         }
         
+        .badge-warning {
+            background: #f59e0b;
+            color: white;
+        }
+        
         /* Config form styles */
         .config-form {
             background: #2a2a2a;
@@ -638,6 +643,7 @@
             const retryCount = movie.retry_count || 0;
             const lastError = movie.last_error || '';
             const skipped = movie.skipped || false;
+            const failedReason = movie.failed_reason || '';
             
             let actions = '';
             
@@ -646,6 +652,12 @@
                     <button class="btn btn-warning" onclick="retryMovie('${movie.id}')" title="Reset retry count">Reset Retry</button>
                     <button class="btn btn-primary" onclick="moveMovie('${movie.id}', 'pending')" title="Move to pending queue">To Pending</button>
                 `;
+                // Add force download button only for space limit failures
+                if (failedReason === 'space_limit') {
+                    actions += `
+                        <button class="btn btn-success" onclick="forceDownload('${movie.id}')" title="Download even if space limit exceeded">Force Download</button>
+                    `;
+                }
             } else if (queueName === 'pending') {
                 actions = `
                     <button class="btn btn-success" onclick="forceDownload('${movie.id}')" title="Download even if space limit exceeded">Force Download</button>
@@ -681,6 +693,9 @@
             }
             if (skipped) {
                 badges += `<span class="badge badge-skipped">⏸ Skipped</span>`;
+            }
+            if (failedReason === 'space_limit') {
+                badges += `<span class="badge badge-warning">💾 Space Limit</span>`;
             }
             
             return `

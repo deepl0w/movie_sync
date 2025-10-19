@@ -352,6 +352,60 @@ class TestForceDownloadEndpoint:
         """Test force download on nonexistent movie"""
         response = client.post('/api/movie/99999/force-download')
         assert response.status_code == 404
+    
+    def test_force_download_from_failed_space_limit(self, client, queue_manager):
+        """Test force download from failed queue for space limit failures"""
+        # Add a movie to failed queue with space limit reason
+        space_limit_movie = {
+            'id': '5001',
+            'title': 'Space Limited Movie',
+            'year': 2023,
+            'failed_reason': 'space_limit',
+            'last_error': 'Download space limit reached',
+            'retry_count': 0
+        }
+        queue_manager.failed_queue.append(space_limit_movie)
+        queue_manager._save_json(queue_manager.failed_file, queue_manager.failed_queue)
+        
+        # Force download should move it to pending
+        response = client.post('/api/movie/5001/force-download')
+        assert response.status_code == 200
+        
+        data = json.loads(response.data)
+        assert data['success'] == True
+        
+        # Verify movie is now in pending queue
+        assert any(m['id'] == '5001' for m in queue_manager.pending_queue)
+        # Verify movie is removed from failed queue
+        assert not any(m['id'] == '5001' for m in queue_manager.failed_queue)
+        
+        # Verify force_download flag is set and failed metadata removed
+        movie = next(m for m in queue_manager.pending_queue if m['id'] == '5001')
+        assert movie.get('force_download') == True
+        assert 'failed_reason' not in movie
+        assert 'last_error' not in movie
+        assert 'retry_count' not in movie
+    
+    def test_force_download_from_failed_non_space_limit(self, client, queue_manager):
+        """Test force download from failed queue for non-space limit failures (should fail)"""
+        # Add a movie to failed queue with regular failure
+        regular_failed_movie = {
+            'id': '5002',
+            'title': 'Regular Failed Movie',
+            'year': 2023,
+            'last_error': 'Download failed',
+            'retry_count': 3
+        }
+        queue_manager.failed_queue.append(regular_failed_movie)
+        queue_manager._save_json(queue_manager.failed_file, queue_manager.failed_queue)
+        
+        # Force download should fail for non-space limit failures
+        response = client.post('/api/movie/5002/force-download')
+        assert response.status_code == 400
+        
+        data = json.loads(response.data)
+        assert 'error' in data
+        assert 'space limit' in data['error'].lower()
 
 
 class TestForceDeleteEndpoint:

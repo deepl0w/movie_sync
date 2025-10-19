@@ -371,8 +371,11 @@ class TestDownloadSpaceLimit:
         
         worker._download_movie(movie)
         
-        # Verify movie was put back in pending queue
-        mock_queue.add_to_pending.assert_called_once_with(movie)
+        # Verify movie was moved to failed queue with space limit reason
+        assert mock_queue.add_to_failed.called
+        call_args = mock_queue.add_to_failed.call_args
+        assert call_args[0][0]['failed_reason'] == 'space_limit'
+        assert 'space limit' in call_args[0][1].lower()  # Error message
         
         # Verify download was not attempted
         mock_downloader.download_movie.assert_not_called()

@@ -319,9 +319,10 @@ class DownloadWorker(threading.Thread):
         if not force_download and not self._check_space_available():
             logger.warning(f"[SPACE LIMIT]  Skipping {title} - download space limit reached "
                          f"({self.max_download_space_gb} GB)")
-            # Put the movie back in the pending queue (don't fail it)
-            # It will be retried when space becomes available
-            self.queue_manager.add_to_pending(movie)
+            # Move to failed queue with space limit marker
+            movie['failed_reason'] = 'space_limit'
+            error_msg = f"Download space limit reached ({self.max_download_space_gb} GB)"
+            self.queue_manager.add_to_failed(movie, error_msg, retry_after=None)
             return
         
         if force_download:

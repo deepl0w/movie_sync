@@ -331,6 +331,7 @@ class WebInterface(threading.Thread):
             try:
                 found = False
                 movie_title = "Unknown"
+                source_queue = None
                 
                 # Find movie in pending queue
                 for movie in self.queue_manager.pending_queue:
@@ -338,20 +339,56 @@ class WebInterface(threading.Thread):
                         movie['force_download'] = True
                         movie_title = movie.get('title', 'Unknown')
                         found = True
+                        source_queue = 'pending'
                         break
                 
+                # If not found in pending, check failed queue (for space limit failures)
+                if not found:
+                    for movie in self.queue_manager.failed_queue:
+                        if str(movie.get('id')) == movie_id:
+                            # Only allow force download for space limit failures
+                            if movie.get('failed_reason') == 'space_limit':
+                                movie_title = movie.get('title', 'Unknown')
+                                # Remove from failed queue
+                                self.queue_manager.failed_queue.remove(movie)
+                                # Clear failed metadata and set force download flag
+                                movie.pop('failed_reason', None)
+                                movie.pop('last_error', None)
+                                movie.pop('retry_count', None)
+                                movie.pop('retry_after', None)
+                                movie['force_download'] = True
+                                # Add to pending queue
+                                self.queue_manager.add_to_pending(movie)
+                                found = True
+                                source_queue = 'failed'
+                                break
+                            else:
+                                return jsonify({"error": "Force download only available for space limit failures"}), 400
+                
                 if found:
-                    # Save pending queue
-                    self.queue_manager._save_json(
-                        self.queue_manager.pending_file,
-                        self.queue_manager.pending_queue
-                    )
+                    if source_queue == 'pending':
+                        # Save pending queue
+                        self.queue_manager._save_json(
+                            self.queue_manager.pending_file,
+                            self.queue_manager.pending_queue
+                        )
+                    elif source_queue == 'failed':
+                        # Save both queues
+                        self.queue_manager._save_json(
+                            self.queue_manager.failed_file,
+                            self.queue_manager.failed_queue
+                        )
+                        self.queue_manager._save_json(
+                            self.queue_manager.pending_file,
+                            self.queue_manager.pending_queue
+                        )
+                    
                     return jsonify({
                         "success": True,
                         "message": f"Marked {movie_title} for forced download"
                     })
                 else:
-                    return jsonify({"error": "Movie not found in pending queue"}), 404
+                    return jsonify({"error": "Movie not found in pending or failed queue"}), 404
             except Exception as e:
                 logger.error(f"Error marking movie for force download: {e}")
                 return jsonify({"error": str(e)}), 500
