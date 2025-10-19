@@ -17,6 +17,35 @@ from filelist_downloader import FileListDownloader
 logger = logging.getLogger(__name__)
 
 
+def get_directory_size_gb(directory: Path) -> float:
+    """
+    Calculate total size of all files in directory (recursively)
+    
+    Args:
+        directory: Path to directory
+        
+    Returns:
+        Total size in gigabytes
+    """
+    if not directory.exists():
+        return 0.0
+    
+    total_size = 0
+    try:
+        for item in directory.rglob('*'):
+            if item.is_file():
+                try:
+                    total_size += item.stat().st_size
+                except (OSError, PermissionError):
+                    # Skip files we can't access
+                    continue
+    except Exception as e:
+        logger.warning(f"Error calculating directory size: {e}")
+    
+    # Convert bytes to gigabytes
+    return total_size / (1024 ** 3)
+
+
 class MonitorWorker(threading.Thread):
     """
     Worker thread that monitors Letterboxd watchlist
@@ -137,7 +166,8 @@ class DownloadWorker(threading.Thread):
     
     def __init__(self, queue_manager: QueueManager, downloader: FileListDownloader,
                  download_dir: str, retry_interval: int = 3600, 
-                 max_retries: int = 5, backoff_multiplier: float = 2.0):
+                 max_retries: int = 5, backoff_multiplier: float = 2.0,
+                 max_download_space_gb: float = 0):
         """
         Initialize download worker
         
@@ -148,6 +178,7 @@ class DownloadWorker(threading.Thread):
             retry_interval: Base retry interval in seconds (default: 1 hour)
             max_retries: Maximum number of retry attempts
             backoff_multiplier: Exponential backoff multiplier
+            max_download_space_gb: Maximum total space for downloads in GB (0 = unlimited)
         """
         super().__init__(daemon=True, name="DownloadWorker")
         
@@ -157,6 +188,7 @@ class DownloadWorker(threading.Thread):
         self.retry_interval = retry_interval
         self.max_retries = max_retries
         self.backoff_multiplier = backoff_multiplier
+        self.max_download_space_gb = max_download_space_gb
         
         self.running = False
         self.stop_event = threading.Event()
@@ -164,7 +196,13 @@ class DownloadWorker(threading.Thread):
     def run(self):
         """Main worker loop"""
         self.running = True
-        logger.info(f"[DOWNLOAD]  Download worker started (retry interval: {self.retry_interval}s)")
+        space_info = f" (space limit: {self.max_download_space_gb} GB)" if self.max_download_space_gb > 0 else " (unlimited space)"
+        logger.info(f"[DOWNLOAD]  Download worker started (retry interval: {self.retry_interval}s{space_info})")
+        
+        # Log current space usage if limit is set
+        if self.max_download_space_gb > 0:
+            current_size_gb = get_directory_size_gb(self.download_dir)
+            logger.info(f"[SPACE]  Current download directory size: {current_size_gb:.2f} GB / {self.max_download_space_gb} GB")
         
         # Process any pending downloads immediately
         self._process_pending_movies()
@@ -239,6 +277,15 @@ class DownloadWorker(threading.Thread):
             self.queue_manager.add_to_completed(movie)
             return
         
+        # Check space limit before downloading
+        if not self._check_space_available():
+            logger.warning(f"[SPACE LIMIT]  Skipping {title} - download space limit reached "
+                         f"({self.max_download_space_gb} GB)")
+            # Put the movie back in the pending queue (don't fail it)
+            # It will be retried when space becomes available
+            self.queue_manager.add_to_pending(movie)
+            return
+        
         # Attempt download
         logger.info(f"[DOWNLOAD]  Processing: {title}")
         success = self.downloader.download_movie(movie)
@@ -257,6 +304,27 @@ class DownloadWorker(threading.Thread):
             
             logger.error(f"{error_msg}: {title}")
             self.queue_manager.add_to_failed(movie, error_msg, retry_after)
+    
+    def _check_space_available(self) -> bool:
+        """
+        Check if there's space available for more downloads
+        
+        Returns:
+            True if space is available or limit is disabled (0), False if limit reached
+        """
+        # If limit is 0 or not set, unlimited space
+        if not self.max_download_space_gb or self.max_download_space_gb <= 0:
+            return True
+        
+        # Calculate current space usage
+        current_size_gb = get_directory_size_gb(self.download_dir)
+        
+        # Check if we're under the limit
+        if current_size_gb >= self.max_download_space_gb:
+            logger.debug(f"[SPACE]  Current usage: {current_size_gb:.2f} GB / {self.max_download_space_gb} GB limit")
+            return False
+        
+        return True
     
     def _is_movie_downloaded(self, movie: Dict) -> bool:
         """

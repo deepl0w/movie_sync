@@ -108,6 +108,13 @@ def run_movie_sync(config: dict):
     logger.info(f"Max retries: {config.get('max_retries', 5)}")
     logger.info(f"Download directory: {config.get('download_directory', '~/Downloads')}")
     
+    # Space limit configuration
+    space_limit = config.get('max_download_space_gb', 0)
+    if space_limit > 0:
+        logger.info(f"Download space limit: {space_limit} GB")
+    else:
+        logger.info("Download space limit: Unlimited")
+    
     # Cleanup configuration
     cleanup_enabled = config.get('enable_removal_cleanup', False)
     grace_period = config.get('removal_grace_period', 604800)
@@ -150,7 +157,8 @@ def run_movie_sync(config: dict):
         download_dir=config.get('download_directory', os.path.expanduser("~/Downloads")),
         retry_interval=config.get('retry_interval', 3600),
         max_retries=config.get('max_retries', 5),
-        backoff_multiplier=config.get('backoff_multiplier', 2.0)
+        backoff_multiplier=config.get('backoff_multiplier', 2.0),
+        max_download_space_gb=config.get('max_download_space_gb', 0)
     )
     
     logger.info("Creating cleanup worker...")
@@ -277,6 +285,12 @@ def setup_configuration(config: dict):
     download_dir = input(f"Download directory [{config.get('download_directory', '~/Downloads')}]: ").strip()
     if download_dir:
         config["download_directory"] = os.path.expanduser(download_dir)
+    
+    # Download space limit
+    print(f"Current download space limit: {config.get('max_download_space_gb', 0)} GB (0 = unlimited)")
+    space_limit = input("Maximum total download space in GB [0 for unlimited]: ").strip()
+    if space_limit and space_limit.replace('.', '', 1).isdigit():
+        config["max_download_space_gb"] = float(space_limit)
     
     # Retry settings
     print("\n4. Retry Configuration")

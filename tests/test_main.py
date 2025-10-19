@@ -38,7 +38,7 @@ class TestMain:
             }
             
             # Simulate user pressing enter for all prompts (keep defaults)
-            inputs = iter(['', '', '', '', ''])
+            inputs = iter(['', '', '', '', '', ''])  # Added one more for space limit
             monkeypatch.setattr('builtins.input', lambda x: next(inputs))
             
             with patch('sys.argv', ['main.py', '--config']):
@@ -168,6 +168,7 @@ class TestSetupConfiguration:
             'newuser',           # username
             '7200',              # check_interval
             '~/Movies',          # download_directory
+            '50',                # max_download_space_gb
             '1800',              # retry_interval
             '3'                  # max_retries
         ])
@@ -178,6 +179,7 @@ class TestSetupConfiguration:
         
         assert config["username"] == "newuser"
         assert config["check_interval"] == 7200
+        assert config["max_download_space_gb"] == 50
         assert config["retry_interval"] == 1800
         assert config["max_retries"] == 3
         assert mock_save.called
@@ -195,7 +197,7 @@ class TestSetupConfiguration:
         original_config = config.copy()
         
         # Simulate user pressing enter (keep defaults)
-        inputs = iter(['', '', '', '', ''])
+        inputs = iter(['', '', '', '', '', ''])  # Added one more for space limit
         monkeypatch.setattr('builtins.input', lambda x: next(inputs))
         
         with patch('main.Config.save') as mock_save:
@@ -216,7 +218,7 @@ class TestSetupConfiguration:
         }
         
         # Change only username and max_retries
-        inputs = iter(['newuser', '', '', '', '10'])
+        inputs = iter(['newuser', '', '', '', '', '10'])  # Added one more for space limit
         monkeypatch.setattr('builtins.input', lambda x: next(inputs))
         
         with patch('main.Config.save') as mock_save:
@@ -238,7 +240,7 @@ class TestSetupConfiguration:
         }
         
         # Try to set invalid (non-numeric) interval
-        inputs = iter(['', 'invalid', '', '', ''])
+        inputs = iter(['', 'invalid', '', '', '', ''])  # Added one more for space limit
         monkeypatch.setattr('builtins.input', lambda x: next(inputs))
         
         with patch('main.Config.save') as mock_save:

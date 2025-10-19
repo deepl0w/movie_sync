@@ -3,7 +3,55 @@
 import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, patch, PropertyMock
-from workers import MonitorWorker, DownloadWorker
+from workers import MonitorWorker, DownloadWorker, get_directory_size_gb
+
+
+class TestUtilityFunctions:
+    """Test cases for utility functions"""
+    
+    def test_get_directory_size_gb_empty(self, temp_dir):
+        """Test calculating size of empty directory"""
+        test_dir = temp_dir / "empty"
+        test_dir.mkdir()
+        
+        size = get_directory_size_gb(test_dir)
+        assert size == 0.0
+    
+    def test_get_directory_size_gb_with_files(self, temp_dir):
+        """Test calculating size of directory with files"""
+        test_dir = temp_dir / "files"
+        test_dir.mkdir()
+        
+        # Create files with known sizes
+        (test_dir / "file1.txt").write_text("x" * 1024)  # 1 KB
+        (test_dir / "file2.txt").write_text("x" * 2048)  # 2 KB
+        
+        size = get_directory_size_gb(test_dir)
+        # 3 KB = 3072 bytes = 0.000002861 GB approximately
+        assert size > 0
+        assert size < 0.001  # Should be very small
+    
+    def test_get_directory_size_gb_nonexistent(self, temp_dir):
+        """Test calculating size of non-existent directory"""
+        test_dir = temp_dir / "nonexistent"
+        
+        size = get_directory_size_gb(test_dir)
+        assert size == 0.0
+    
+    def test_get_directory_size_gb_nested(self, temp_dir):
+        """Test calculating size of directory with nested files"""
+        test_dir = temp_dir / "nested"
+        test_dir.mkdir()
+        subdir = test_dir / "subdir"
+        subdir.mkdir()
+        
+        # Create files in both directories
+        (test_dir / "file1.txt").write_text("x" * 1000)
+        (subdir / "file2.txt").write_text("x" * 2000)
+        
+        size = get_directory_size_gb(test_dir)
+        # Should include both files
+        assert size > 0
 
 
 class TestMonitorWorkerFuzzyMatching:
@@ -237,3 +285,125 @@ class TestMonitorWorkerFuzzyMatching:
         result = worker._is_movie_downloaded(movie)
         
         assert result is True
+
+
+class TestDownloadSpaceLimit:
+    """Test cases for download space limit functionality"""
+    
+    def test_check_space_available_unlimited(self, temp_dir, mocker):
+        """Test space check when limit is disabled (0)"""
+        mock_queue = mocker.MagicMock()
+        mock_downloader = mocker.MagicMock()
+        
+        download_dir = temp_dir / "downloads"
+        download_dir.mkdir()
+        
+        worker = DownloadWorker(
+            mock_queue, mock_downloader, str(download_dir),
+            max_download_space_gb=0  # Unlimited
+        )
+        
+        assert worker._check_space_available() is True
+    
+    def test_check_space_available_under_limit(self, temp_dir, mocker):
+        """Test space check when under the limit"""
+        mock_queue = mocker.MagicMock()
+        mock_downloader = mocker.MagicMock()
+        
+        download_dir = temp_dir / "downloads"
+        download_dir.mkdir()
+        
+        # Create a small file (much less than 10 GB)
+        test_file = download_dir / "test.mkv"
+        test_file.write_text("small file")
+        
+        worker = DownloadWorker(
+            mock_queue, mock_downloader, str(download_dir),
+            max_download_space_gb=10  # 10 GB limit
+        )
+        
+        assert worker._check_space_available() is True
+    
+    def test_check_space_available_over_limit(self, temp_dir, mocker):
+        """Test space check when over the limit"""
+        mock_queue = mocker.MagicMock()
+        mock_downloader = mocker.MagicMock()
+        
+        download_dir = temp_dir / "downloads"
+        download_dir.mkdir()
+        
+        worker = DownloadWorker(
+            mock_queue, mock_downloader, str(download_dir),
+            max_download_space_gb=0.00000001  # Very tiny limit (10 bytes)
+        )
+        
+        # Create a file that exceeds the tiny limit
+        test_file = download_dir / "large.mkv"
+        test_file.write_text("x" * 1000)  # 1 KB, way over 10 byte limit
+        
+        assert worker._check_space_available() is False
+    
+    def test_download_movie_skips_when_space_limit_reached(self, temp_dir, mocker):
+        """Test that download is skipped when space limit is reached"""
+        mock_queue = mocker.MagicMock()
+        mock_downloader = mocker.MagicMock()
+        
+        download_dir = temp_dir / "downloads"
+        download_dir.mkdir()
+        
+        # Create a file to use up space
+        test_file = download_dir / "existing.mkv"
+        test_file.write_text("x" * 1000)
+        
+        worker = DownloadWorker(
+            mock_queue, mock_downloader, str(download_dir),
+            max_download_space_gb=0.00000001  # Tiny limit (10 bytes)
+        )
+        
+        movie = {
+            'title': 'Test Movie',
+            'year': 2020,
+            'id': 'test123'
+        }
+        
+        # Mock the _is_movie_downloaded to return False
+        worker._is_movie_downloaded = mocker.MagicMock(return_value=False)
+        
+        worker._download_movie(movie)
+        
+        # Verify movie was put back in pending queue
+        mock_queue.add_to_pending.assert_called_once_with(movie)
+        
+        # Verify download was not attempted
+        mock_downloader.download_movie.assert_not_called()
+    
+    def test_download_movie_proceeds_when_space_available(self, temp_dir, mocker):
+        """Test that download proceeds when space is available"""
+        mock_queue = mocker.MagicMock()
+        mock_downloader = mocker.MagicMock()
+        mock_downloader.download_movie.return_value = True
+        
+        download_dir = temp_dir / "downloads"
+        download_dir.mkdir()
+        
+        worker = DownloadWorker(
+            mock_queue, mock_downloader, str(download_dir),
+            max_download_space_gb=100  # Large limit
+        )
+        
+        movie = {
+            'title': 'Test Movie',
+            'year': 2020,
+            'id': 'test123'
+        }
+        
+        # Mock the _is_movie_downloaded to return False
+        worker._is_movie_downloaded = mocker.MagicMock(return_value=False)
+        
+        worker._download_movie(movie)
+        
+        # Verify download was attempted
+        mock_downloader.download_movie.assert_called_once_with(movie)
+        
+        # Verify movie was added to completed queue
+        mock_queue.add_to_completed.assert_called_once_with(movie)

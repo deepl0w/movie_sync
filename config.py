@@ -16,6 +16,8 @@ class Config:
         "watchlist_file": str(CONFIG_DIR / "watchlist.json"),
         "check_interval": 3600,  # 1 hour
         "download_directory": os.path.expanduser("~/Downloads"),
+        # Storage limits
+        "max_download_space_gb": 100,  # Maximum total space for completed downloads (in GB), 0 = unlimited
         # Retry configuration
         "retry_interval": 3600,  # Base retry interval (1 hour)
         "max_retries": 5,  # Maximum retry attempts
