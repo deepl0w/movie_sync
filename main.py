@@ -41,6 +41,12 @@ except ImportError:
     FILELIST_AVAILABLE = False
     logger.error("FileList downloader not available - install required packages: pip install -r requirements.txt")
 
+try:
+    from web_interface import WebInterface
+    WEB_AVAILABLE = True
+except ImportError:
+    WEB_AVAILABLE = False
+
 
 def setup_logging(log_file: str | None = None, console_level: str = "INFO"):
     """
@@ -92,12 +98,14 @@ def setup_logging(log_file: str | None = None, console_level: str = "INFO"):
     return str(log_file_path)
 
 
-def run_movie_sync(config: dict):
+def run_movie_sync(config: dict, enable_web: bool = False, web_port: int = 5000):
     """
     Run Movie Sync in threaded mode
     
     Args:
         config: Configuration dictionary
+        enable_web: Enable web interface
+        web_port: Port for web interface
     """
     logger.info("=" * 70)
     logger.info("MOVIE SYNC - Letterboxd to FileList.io")
@@ -176,6 +184,31 @@ def run_movie_sync(config: dict):
         enabled=config.get('enable_removal_cleanup', False)
     )
     
+    # Create web interface if enabled
+    web_worker = None
+    if enable_web:
+        if not WEB_AVAILABLE:
+            logger.warning("Web interface requested but Flask is not installed")
+            logger.info("Install with: pip install flask flask-cors")
+        else:
+            logger.info(f"Creating web interface on port {web_port}...")
+            log_file = config.get('log_file')
+            
+            # Create config reload callback
+            def reload_config_callback(new_config):
+                """Reload configuration in all workers"""
+                monitor_worker.reload_config(new_config)
+                download_worker.reload_config(new_config)
+                cleanup_worker.reload_config(new_config)
+            
+            web_worker = WebInterface(
+                queue_manager=queue_manager,
+                port=web_port,
+                log_file=log_file,
+                config_callback=reload_config_callback,
+                cleanup_service=cleanup_service
+            )
+    
     # Set up graceful shutdown
     shutdown_initiated = False
     
@@ -193,11 +226,15 @@ def run_movie_sync(config: dict):
         monitor_worker.stop()
         download_worker.stop()
         cleanup_worker.stop()
+        if web_worker:
+            web_worker.stop()
         
         logger.info("Waiting for workers to finish (max 10 seconds)...")
         monitor_worker.join(timeout=10)
         download_worker.join(timeout=10)
         cleanup_worker.join(timeout=10)
+        if web_worker:
+            web_worker.join(timeout=10)
 
         # Show final statistics
         logger.info("=" * 70)
@@ -226,6 +263,21 @@ def run_movie_sync(config: dict):
     monitor_worker.start()
     download_worker.start()
     cleanup_worker.start()
+    if web_worker:
+        web_worker.start()
+        # Try to get local IP for network access
+        try:
+            import socket
+            # Connect to external server to get the actual local IP
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            local_ip = s.getsockname()[0]
+            s.close()
+            logger.info(f"Web interface available at:")
+            logger.info(f"  - Local:   http://127.0.0.1:{web_port}")
+            logger.info(f"  - Network: http://{local_ip}:{web_port}")
+        except Exception:
+            logger.info(f"Web interface available at: http://0.0.0.0:{web_port}")
     
     logger.info("Workers started successfully")
     logger.info("=" * 70)
@@ -350,14 +402,21 @@ Queue files are stored in: ~/.movie_sync/
     parser.add_argument("--console-level", default="INFO",
                        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
                        help="Minimum log level for console output (default: INFO)")
+    parser.add_argument("--web", action="store_true",
+                       help="Enable web interface for monitoring and queue management")
+    parser.add_argument("--web-port", type=int, default=5000,
+                       help="Port for web interface (default: 5000)")
     
     args = parser.parse_args()
     
     # Set up logging
-    setup_logging(log_file=args.log_file, console_level=args.console_level)
+    log_file = setup_logging(log_file=args.log_file, console_level=args.console_level)
     
     # Load configuration
     config = Config.load()
+    
+    # Store log file path in config for web interface
+    config['log_file'] = log_file
     
     # Handle configuration mode
     if args.config:
@@ -412,7 +471,7 @@ Queue files are stored in: ~/.movie_sync/
         return 1
     
     # Run the application
-    return run_movie_sync(config)
+    return run_movie_sync(config, enable_web=args.web, web_port=args.web_port)
 
 
 if __name__ == "__main__":

@@ -156,6 +156,18 @@ class MonitorWorker(threading.Thread):
         """Stop the worker thread gracefully"""
         logger.info("[STOP]  Stopping monitor worker...")
         self.stop_event.set()
+    
+    def reload_config(self, config: Dict) -> None:
+        """
+        Reload configuration
+        
+        Args:
+            config: New configuration dictionary
+        """
+        logger.info("[CONFIG] Reloading monitor worker config...")
+        if 'check_interval' in config:
+            self.check_interval = config['check_interval']
+            logger.info(f"[CONFIG] Check interval updated to {self.check_interval}s")
 
 
 class DownloadWorker(threading.Thread):
@@ -224,11 +236,31 @@ class DownloadWorker(threading.Thread):
     
     def _process_pending_movies(self):
         """Process movies from pending queue"""
+        processed_ids = set()  # Track processed movies to avoid infinite loops with skipped items
+        
         while not self.stop_event.is_set():
             # Get next movie from queue
             movie = self.queue_manager.get_next_pending()
             if not movie:
                 break
+            
+            movie_id = str(movie.get('id', ''))
+            
+            # Skip movies marked as skipped (unless force_download is set)
+            if movie.get('skipped', False) and not movie.get('force_download', False):
+                logger.debug(f"[SKIP]  Skipping {movie.get('title', 'Unknown')} - marked as skipped")
+                
+                # Check if movie is already in pending queue
+                already_in_queue = any(str(m.get('id')) == movie_id for m in self.queue_manager.pending_queue)
+                
+                # Put it back if not already there
+                if not already_in_queue:
+                    self.queue_manager.add_to_pending(movie)
+                    logger.debug(f"[SKIP]  Added {movie.get('title', 'Unknown')} back to pending queue")
+                
+                # Track that we've seen this to avoid infinite processing in this cycle
+                processed_ids.add(movie_id)
+                continue
             
             try:
                 self._download_movie(movie)
@@ -259,6 +291,11 @@ class DownloadWorker(threading.Thread):
                 if self.stop_event.is_set():
                     break
                 
+                # Skip movies marked as skipped
+                if movie.get('skipped', False):
+                    logger.debug(f"[SKIP]  Skipping retry for {movie.get('title', 'Unknown')} - marked as skipped")
+                    continue
+                
                 logger.info(f"[RETRY]  Retrying: {movie['title']} (attempt {movie.get('retry_count', 0) + 1}/{self.max_retries})")
                 self.queue_manager.move_failed_to_pending(movie)
     
@@ -270,6 +307,7 @@ class DownloadWorker(threading.Thread):
             movie: Movie dictionary
         """
         title = movie.get('title', 'Unknown')
+        force_download = movie.get('force_download', False)
         
         # Check if already downloaded (fuzzy matching)
         if self._is_movie_downloaded(movie):
@@ -277,14 +315,19 @@ class DownloadWorker(threading.Thread):
             self.queue_manager.add_to_completed(movie)
             return
         
-        # Check space limit before downloading
-        if not self._check_space_available():
+        # Check space limit before downloading (unless force_download is set)
+        if not force_download and not self._check_space_available():
             logger.warning(f"[SPACE LIMIT]  Skipping {title} - download space limit reached "
                          f"({self.max_download_space_gb} GB)")
             # Put the movie back in the pending queue (don't fail it)
             # It will be retried when space becomes available
             self.queue_manager.add_to_pending(movie)
             return
+        
+        if force_download:
+            logger.info(f"[FORCE]  Force downloading {title} (ignoring space limit)")
+            # Clear the force_download flag
+            movie['force_download'] = False
         
         # Attempt download
         logger.info(f"[DOWNLOAD]  Processing: {title}")
@@ -405,6 +448,27 @@ class DownloadWorker(threading.Thread):
         """Stop the worker thread gracefully"""
         logger.info("[STOP]  Stopping download worker...")
         self.stop_event.set()
+    
+    def reload_config(self, config: Dict) -> None:
+        """
+        Reload configuration
+        
+        Args:
+            config: New configuration dictionary
+        """
+        logger.info("[CONFIG] Reloading download worker config...")
+        if 'retry_interval' in config:
+            self.retry_interval = config['retry_interval']
+            logger.info(f"[CONFIG] Retry interval updated to {self.retry_interval}s")
+        if 'max_retries' in config:
+            self.max_retries = config['max_retries']
+            logger.info(f"[CONFIG] Max retries updated to {self.max_retries}")
+        if 'backoff_multiplier' in config:
+            self.backoff_multiplier = config['backoff_multiplier']
+            logger.info(f"[CONFIG] Backoff multiplier updated to {self.backoff_multiplier}")
+        if 'max_download_space_gb' in config:
+            self.max_download_space_gb = config['max_download_space_gb']
+            logger.info(f"[CONFIG] Max download space updated to {self.max_download_space_gb} GB")
 
 
 class CleanupWorker(threading.Thread):
@@ -471,6 +535,11 @@ class CleanupWorker(threading.Thread):
             logger.info(f"[CLEANUP]  Processing {len(movies_to_delete)} movie(s) for cleanup...")
             
             for movie in movies_to_delete:
+                # Skip movies marked as skipped
+                if movie.get('skipped', False):
+                    logger.debug(f"[SKIP]  Skipping cleanup for {movie.get('title', 'Unknown')} - marked as skipped")
+                    continue
+                
                 title = movie.get('title', 'Unknown')
                 year = movie.get('year', '')
                 movie_id = str(movie.get('id', ''))
@@ -516,6 +585,22 @@ class CleanupWorker(threading.Thread):
         """Stop the worker thread gracefully"""
         logger.info("[STOP]  Stopping cleanup worker...")
         self.stop_event.set()
+    
+    def reload_config(self, config: Dict) -> None:
+        """
+        Reload configuration
+        
+        Args:
+            config: New configuration dictionary
+        """
+        logger.info("[CONFIG] Reloading cleanup worker config...")
+        if 'removal_grace_period' in config:
+            self.grace_period = config['removal_grace_period']
+            logger.info(f"[CONFIG] Grace period updated to {self.grace_period}s")
+        if 'enable_removal_cleanup' in config:
+            self.enabled = config['enable_removal_cleanup']
+            status = "enabled" if self.enabled else "disabled"
+            logger.info(f"[CONFIG] Cleanup {status}")
 
 
 

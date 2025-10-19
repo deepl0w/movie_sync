@@ -13,6 +13,8 @@ Automatically sync your Letterboxd watchlist with FileList.io. This tool monitor
 - 💾 **Crash Recovery** - Queue persistence prevents data loss
 - 🆓 **Freeleech Priority** - Optionally prefer ratio-friendly torrents
 - 🧹 **Automatic Cleanup** - Optionally removes movies deleted from watchlist (with configurable grace period)
+- 📊 **Web Interface** - Optional browser-based dashboard for monitoring and queue management
+- 💾 **Space Limits** - Configure maximum download space with automatic queue management
 
 ## 🚀 Quick Start
 
@@ -95,7 +97,14 @@ Monitor Thread              Download Thread
 # Run the application (continuously monitors and downloads)
 python main.py
 
+# Run with web interface
+python main.py --web
+
+# Run with custom web port
+python main.py --web --web-port 8000
+
 # Show queue statistics
+python main.py --stats
 python main.py --stats
 
 # Configure settings
@@ -139,6 +148,46 @@ Queue files are in `~/.movie_sync/`:
 - `queue_pending.json` - Movies waiting to download
 - `queue_failed.json` - Failed movies with retry info
 - `queue_completed.json` - Successfully downloaded movies
+
+### Web Interface
+
+Enable the optional web interface for a visual dashboard:
+
+```bash
+python main.py --web              # Start on default port 5000
+python main.py --web --web-port 8080  # Custom port
+```
+
+Then open your browser to `http://localhost:5000` (or your custom port)
+
+**Features**:
+- 📊 **Real-time Statistics** - View pending, failed, completed, and removed counts
+- 📋 **Queue Management** - View all queues with movie details
+- 🎬 **Movie Actions** - Move movies between queues, retry failed downloads, delete entries
+- 📝 **Live Logs** - View recent log entries in real-time
+- ⚙️ **Config Editor** - Edit and reload configuration without restarting
+- 🔄 **Auto-refresh** - Dashboard updates every 10 seconds automatically
+- 🌐 **Network Access** - Access from other devices on your network
+
+**Web Interface Actions**:
+- Move movies between queues (pending ↔ failed ↔ completed)
+- Reset retry count for failed movies
+- Delete movies from queues
+- View error messages and retry counts
+- Monitor system logs
+- Edit configuration values in real-time
+- Reload settings without restarting the application
+
+**Configuration Management**:
+The web UI includes a configuration editor that allows you to:
+- Modify all settings (intervals, limits, directories, etc.)
+- See helpful descriptions for each setting
+- Save changes that take effect immediately
+- Reset to previous values if needed
+
+Changes are saved to `~/.movie_sync/config.json` and automatically reloaded in all worker threads without requiring a restart.
+
+**Requirements**: Flask and Flask-CORS (installed with `requirements.txt`)
 
 ## ⚙️ Configuration
 

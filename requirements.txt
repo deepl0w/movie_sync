@@ -5,6 +5,10 @@ fuzzywuzzy>=0.18.0
 python-Levenshtein>=0.27.0
 qbittorrent-api>=2024.9.67
 
+# Web interface (optional)
+flask>=3.0.0
+flask-cors>=4.0.0
+
 # Testing dependencies
 pytest>=7.4.0
 pytest-mock>=3.12.0

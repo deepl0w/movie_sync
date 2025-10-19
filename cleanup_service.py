@@ -84,7 +84,7 @@ class CleanupService:
                 logger.warning(f"{error_msg}")
         
         # Remove from qBittorrent
-        if remove_from_qbt and self.qbt_manager:
+        if remove_from_qbt and self.qbt_manager and self.qbt_manager.client:
             try:
                 removed = self._remove_from_qbittorrent(title, year)
                 results['qbt_removed'] = removed
@@ -194,7 +194,7 @@ class CleanupService:
         Returns:
             True if torrent was removed
         """
-        if not self.qbt_manager:
+        if not self.qbt_manager or not self.qbt_manager.client:
             return False
         
         normalized_title = self._normalize_title(title)
@@ -316,7 +316,7 @@ class CleanupService:
                     preview['torrents'].append(str(torrent_file))
         
         # Preview qBittorrent torrents
-        if self.qbt_manager:
+        if self.qbt_manager and self.qbt_manager.client:
             try:
                 torrents = self.qbt_manager.client.torrents_info()
                 for torrent in torrents:
