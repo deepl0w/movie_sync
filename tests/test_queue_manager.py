@@ -252,3 +252,42 @@ class TestQueueManager:
         assert removed == 1
         assert qm.get_completed_count() == 1
         assert qm.completed_queue[0]['id'] == 'tt0002'
+    
+    def test_retry_count_increments_across_retries(self, temp_dir):
+        """Test that retry_count properly increments when movie fails multiple times"""
+        qm = QueueManager(str(temp_dir))
+        
+        movie = {'id': 'tt0133093', 'title': 'The Matrix', 'year': 1999}
+        
+        # First failure
+        qm.add_to_failed(movie, "Download failed", retry_after=int(time.time()))
+        assert qm.get_failed_count() == 1
+        failed_movie = qm.failed_queue[0]
+        assert failed_movie['retry_count'] == 1
+        
+        # Move to pending for retry
+        qm.move_failed_to_pending(failed_movie.copy())
+        assert qm.get_failed_count() == 0
+        assert qm.get_pending_count() == 1
+        
+        # Get the movie from pending (it still has retry_count)
+        pending_movie = qm.pending_queue[0]
+        assert pending_movie['retry_count'] == 1
+        
+        # Second failure - retry_count should increment to 2
+        qm.add_to_failed(pending_movie, "Download failed again", retry_after=int(time.time()))
+        assert qm.get_failed_count() == 1
+        failed_movie = qm.failed_queue[0]
+        assert failed_movie['retry_count'] == 2
+        
+        # Move to pending again
+        qm.move_failed_to_pending(failed_movie.copy())
+        pending_movie = qm.pending_queue[0]
+        assert pending_movie['retry_count'] == 2
+        
+        # Third failure - retry_count should increment to 3
+        qm.add_to_failed(pending_movie, "Download failed yet again", retry_after=int(time.time()))
+        assert qm.get_failed_count() == 1
+        failed_movie = qm.failed_queue[0]
+        assert failed_movie['retry_count'] == 3
+

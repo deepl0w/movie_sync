@@ -162,9 +162,9 @@ class QueueManager:
                 if retry_after:
                     existing['retry_after'] = retry_after
             else:
-                # Add new failed entry
+                # Add new failed entry - preserve retry_count if this is a re-failure
                 movie['status'] = 'failed'
-                movie['retry_count'] = 1
+                movie['retry_count'] = movie.get('retry_count', 0) + 1
                 movie['last_error'] = error
                 movie['last_failed_at'] = int(time.time())
                 if retry_after:
