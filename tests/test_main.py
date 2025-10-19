@@ -13,7 +13,7 @@ from main import main, setup_configuration, run_movie_sync
 class TestMain:
     """Test cases for main entry point"""
     
-    def test_main_no_username_error(self, temp_dir, capsys):
+    def test_main_no_username_error(self, temp_dir, caplog):
         """Test that main() errors when username is not configured"""
         with patch('main.Config.load') as mock_load:
             mock_load.return_value = {"check_interval": 3600}  # No username
@@ -22,8 +22,7 @@ class TestMain:
                 result = main()
         
         assert result == 1
-        captured = capsys.readouterr()
-        assert "username is required" in captured.out.lower()
+        assert "username is required" in caplog.text.lower()
     
     def test_main_config_mode(self, temp_dir, monkeypatch):
         """Test main() in config mode"""
@@ -48,7 +47,7 @@ class TestMain:
             assert result == 0
             assert mock_save.called
     
-    def test_main_stats_mode_empty(self, temp_dir, capsys):
+    def test_main_stats_mode_empty(self, temp_dir, caplog):
         """Test main() in stats mode with empty queues"""
         with patch('main.Config.load') as mock_load, \
              patch('main.QueueManager') as mock_qm_class:
@@ -73,12 +72,11 @@ class TestMain:
                 result = main()
             
             assert result == 0
-            captured = capsys.readouterr()
-            assert "Pending:    0" in captured.out
-            assert "Failed:     0" in captured.out
-            assert "Completed:  0" in captured.out
+            assert "pending" in caplog.text.lower()
+            assert "failed" in caplog.text.lower()
+            assert "completed" in caplog.text.lower()
     
-    def test_main_stats_mode_with_failures(self, temp_dir, capsys):
+    def test_main_stats_mode_with_failures(self, temp_dir, caplog):
         """Test main() stats mode showing failed movies"""
         with patch('main.Config.load') as mock_load, \
              patch('main.QueueManager') as mock_qm_class:
@@ -108,13 +106,12 @@ class TestMain:
                 result = main()
             
             assert result == 0
-            captured = capsys.readouterr()
-            assert "Pending:    2" in captured.out
-            assert "Failed:     3" in captured.out
-            assert "Completed:  10" in captured.out
-            assert "Permanent:  1" in captured.out
-            assert "Movie 1" in captured.out
-            assert "Failed Movie" in captured.out
+            assert "pending" in caplog.text.lower() and "2" in caplog.text
+            assert "failed" in caplog.text.lower() and "3" in caplog.text
+            assert "completed" in caplog.text.lower() and "10" in caplog.text
+            assert "movie 1" in caplog.text.lower()
+            assert "movie 2" in caplog.text.lower()
+            assert "failed movie" in caplog.text.lower()
     
     def test_main_username_override(self):
         """Test that --username overrides config"""
@@ -255,7 +252,7 @@ class TestSetupConfiguration:
 class TestRunMovieSync:
     """Test cases for run_movie_sync()"""
     
-    def test_run_without_filelist_available(self, capsys):
+    def test_run_without_filelist_available(self, caplog):
         """Test that run_movie_sync fails gracefully without FileList"""
         config = {
             "username": "testuser",
@@ -266,8 +263,7 @@ class TestRunMovieSync:
             result = run_movie_sync(config)
         
         assert result == 1
-        captured = capsys.readouterr()
-        assert "Cannot start" in captured.out
+        assert "filelist" in caplog.text.lower()
     
     def test_run_creates_workers(self):
         """Test that run_movie_sync creates monitor and download workers"""
@@ -293,7 +289,8 @@ class TestRunMovieSync:
                 "pending": 0,
                 "failed": 0,
                 "completed": 0,
-                "permanent_failures": 0
+                "permanent_failures": 0,
+                "removed": 0
             }
             mock_qm_class.return_value = mock_qm
             

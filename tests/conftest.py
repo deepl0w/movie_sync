@@ -4,8 +4,39 @@ import pytest
 import tempfile
 import shutil
 import json
+import logging
+import sys
 from pathlib import Path
 from typing import Dict, Any
+
+
+@pytest.fixture(scope="function", autouse=True)
+def configure_logging():
+    """Configure logging for tests to capture output properly"""
+    # Remove all existing handlers
+    for handler in logging.root.handlers[:]:
+        logging.root.removeHandler(handler)
+    
+    # Add a StreamHandler that writes to stdout
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(logging.DEBUG)
+    handler.setFormatter(logging.Formatter('%(message)s'))
+    logging.root.addHandler(handler)
+    logging.root.setLevel(logging.DEBUG)
+    
+    # Make sure all logger instances use this configuration
+    for name in logging.root.manager.loggerDict:
+        logger = logging.getLogger(name)
+        logger.setLevel(logging.DEBUG)
+        logger.handlers = []
+        logger.propagate = True
+    
+    yield
+    
+    # Cleanup after test
+    for handler in logging.root.handlers[:]:
+        handler.close()
+        logging.root.removeHandler(handler)
 
 
 @pytest.fixture

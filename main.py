@@ -23,19 +23,73 @@ import time
 import os
 import signal
 import sys
+import logging
+from pathlib import Path
 
 from config import Config
 from queue_manager import QueueManager
 from workers import MonitorWorker, DownloadWorker, CleanupWorker
 from cleanup_service import CleanupService
 
+# Module logger
+logger = logging.getLogger(__name__)
+
 try:
     from filelist_downloader import FileListDownloader
     FILELIST_AVAILABLE = True
 except ImportError:
     FILELIST_AVAILABLE = False
-    print("✗ FileList downloader not available")
-    print("  Please install required packages: pip install -r requirements.txt")
+    logger.error("FileList downloader not available - install required packages: pip install -r requirements.txt")
+
+
+def setup_logging(log_file: str | None = None, console_level: str = "INFO"):
+    """
+    Set up logging configuration
+    
+    Args:
+        log_file: Path to log file (default: ~/.movie_sync/movie_sync.log)
+        console_level: Minimum log level for console output (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+    """
+    # Default log file location
+    if log_file is None:
+        log_dir = Path(os.path.expanduser("~/.movie_sync"))
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_file_path = log_dir / "movie_sync.log"
+    else:
+        log_file_path = Path(log_file)
+        log_file_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Convert console_level string to logging level
+    console_level_int = getattr(logging, console_level.upper(), logging.INFO)
+    
+    # Create formatters
+    detailed_formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    console_formatter = logging.Formatter(
+        '%(levelname)s: %(message)s'
+    )
+    
+    # Set up root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.DEBUG)  # Capture all levels
+    
+    # File handler - always logs everything at DEBUG level
+    file_handler = logging.FileHandler(log_file_path)
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(detailed_formatter)
+    root_logger.addHandler(file_handler)
+    
+    # Console handler - respects console_level
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(console_level_int)
+    console_handler.setFormatter(console_formatter)
+    root_logger.addHandler(console_handler)
+    
+    logger.info(f"Logging initialized - File: {log_file_path}, Console level: {logging.getLevelName(console_level_int)}")
+    
+    return str(log_file_path)
 
 
 def run_movie_sync(config: dict):
@@ -45,43 +99,43 @@ def run_movie_sync(config: dict):
     Args:
         config: Configuration dictionary
     """
-    print("\n" + "=" * 70)
-    print("🚀 MOVIE SYNC - Letterboxd to FileList.io")
-    print("=" * 70)
-    print(f"📺 Letterboxd user: {config['username']}")
-    print(f"⏱️  Monitor interval: {config['check_interval']}s ({config['check_interval']//60} minutes)")
-    print(f"🔄 Retry interval: {config.get('retry_interval', 3600)}s ({config.get('retry_interval', 3600)//60} minutes)")
-    print(f"🔁 Max retries: {config.get('max_retries', 5)}")
-    print(f"📁 Download directory: {config.get('download_directory', '~/Downloads')}")
+    logger.info("=" * 70)
+    logger.info("MOVIE SYNC - Letterboxd to FileList.io")
+    logger.info("=" * 70)
+    logger.info(f"Letterboxd user: {config['username']}")
+    logger.info(f"Monitor interval: {config['check_interval']}s ({config['check_interval']//60} minutes)")
+    logger.info(f"Retry interval: {config.get('retry_interval', 3600)}s ({config.get('retry_interval', 3600)//60} minutes)")
+    logger.info(f"Max retries: {config.get('max_retries', 5)}")
+    logger.info(f"Download directory: {config.get('download_directory', '~/Downloads')}")
     
     # Cleanup configuration
     cleanup_enabled = config.get('enable_removal_cleanup', False)
     grace_period = config.get('removal_grace_period', 604800)
     grace_days = grace_period // 86400
-    print(f"🧹 Cleanup: {'ENABLED' if cleanup_enabled else 'DISABLED'} "
+    logger.info(f"Cleanup: {'ENABLED' if cleanup_enabled else 'DISABLED'} "
           f"(grace period: {grace_days} days)")
     
-    print("\n💡 Press Ctrl+C to stop gracefully")
-    print("=" * 70)
+    logger.info("Press Ctrl+C to stop gracefully")
+    logger.info("=" * 70)
     
     # Check dependencies
     if not FILELIST_AVAILABLE:
-        print("\n✗ Cannot start: FileList downloader not available")
+        logger.error("Cannot start: FileList downloader not available")
         return 1
     
     # Initialize queue manager
-    print("\n📋 Initializing queue manager...")
+    logger.info("Initializing queue manager...")
     queue_manager = QueueManager()
     
     # Initialize downloader
-    print("⚙️  Initializing FileList downloader...")
+    logger.info("Initializing FileList downloader...")
     downloader = FileListDownloader(
         queue_file=None,  # Not used in threaded mode
         use_qbittorrent=True
     )
     
     # Create worker threads
-    print("🎬 Creating monitor worker...")
+    logger.info("Creating monitor worker...")
     monitor_worker = MonitorWorker(
         username=config['username'],
         queue_manager=queue_manager,
@@ -89,7 +143,7 @@ def run_movie_sync(config: dict):
         watchlist_file=config.get('watchlist_file')
     )
     
-    print("⬇️  Creating download worker...")
+    logger.info("Creating download worker...")
     download_worker = DownloadWorker(
         queue_manager=queue_manager,
         downloader=downloader,
@@ -99,7 +153,7 @@ def run_movie_sync(config: dict):
         backoff_multiplier=config.get('backoff_multiplier', 2.0)
     )
     
-    print("🧹 Creating cleanup worker...")
+    logger.info("Creating cleanup worker...")
     torrent_dir_path = downloader.torrent_dir if hasattr(downloader, 'torrent_dir') else os.path.expanduser("~/.movie_sync/torrents")
     cleanup_service = CleanupService(
         download_dir=config.get('download_directory', os.path.expanduser("~/Downloads")),
@@ -120,53 +174,53 @@ def run_movie_sync(config: dict):
     def signal_handler(sig, frame):
         nonlocal shutdown_initiated
         if shutdown_initiated:
-            print("\n⚠️  Force shutdown - some data may be lost")
+            logger.warning("Force shutdown - some data may be lost")
             sys.exit(1)
         
         shutdown_initiated = True
-        print("\n\n" + "=" * 70)
-        print("🛑 Shutdown signal received - stopping workers...")
-        print("=" * 70)
+        logger.info("=" * 70)
+        logger.info("Shutdown signal received - stopping workers...")
+        logger.info("=" * 70)
         
         monitor_worker.stop()
         download_worker.stop()
         cleanup_worker.stop()
         
-        print("⏳ Waiting for workers to finish (max 10 seconds)...")
+        logger.info("Waiting for workers to finish (max 10 seconds)...")
         monitor_worker.join(timeout=10)
         download_worker.join(timeout=10)
         cleanup_worker.join(timeout=10)
 
         # Show final statistics
-        print("\n" + "=" * 70)
-        print("📊 Final Statistics")
-        print("=" * 70)
+        logger.info("=" * 70)
+        logger.info("Final Statistics")
+        logger.info("=" * 70)
         stats = queue_manager.get_statistics()
-        print(f"   Pending: {stats['pending']}")
-        print(f"   Failed: {stats['failed']}")
-        print(f"   Completed: {stats['completed']}")
-        print(f"   Removed: {stats['removed']}")
-        print(f"   Permanent failures: {stats['permanent_failures']}")
+        logger.info(f"   Pending: {stats['pending']}")
+        logger.info(f"   Failed: {stats['failed']}")
+        logger.info(f"   Completed: {stats['completed']}")
+        logger.info(f"   Removed: {stats['removed']}")
+        logger.info(f"   Permanent failures: {stats['permanent_failures']}")
         
         if stats['permanent_failures'] > 0:
-            print("\n⚠️  Some movies have permanently failed after max retries")
-            print("   Check queue_failed.json in ~/.movie_sync/")
+            logger.warning("Some movies have permanently failed after max retries")
+            logger.info("   Check queue_failed.json in ~/.movie_sync/")
         
-        print("\n✅ Shutdown complete - all queues saved")
-        print("=" * 70)
+        logger.info("Shutdown complete - all queues saved")
+        logger.info("=" * 70)
         sys.exit(0)
     
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     
     # Start worker threads
-    print("\n🚀 Starting workers...")
+    logger.info("Starting workers...")
     monitor_worker.start()
     download_worker.start()
     cleanup_worker.start()
     
-    print("✅ Workers started successfully")
-    print("\n" + "=" * 70)
+    logger.info("Workers started successfully")
+    logger.info("=" * 70)
     
     # Keep main thread alive and show periodic statistics
     last_stats_time = time.time()
@@ -180,7 +234,7 @@ def run_movie_sync(config: dict):
             if current_time - last_stats_time >= stats_interval:
                 stats = queue_manager.get_statistics()
                 if stats['pending'] > 0 or stats['failed'] > 0 or stats['removed'] > 0:
-                    print(f"\n📊 Status: {stats['pending']} pending, "
+                    logger.info(f"Status: {stats['pending']} pending, "
                           f"{stats['failed']} failed, {stats['completed']} completed, "
                           f"{stats['removed']} removed")
                 last_stats_time = current_time
@@ -199,7 +253,7 @@ def setup_configuration(config: dict):
         config: Current configuration dictionary
     """
     print("\n" + "=" * 70)
-    print("⚙️  Movie Sync - Configuration Setup")
+    print("Movie Sync - Configuration Setup")
     print("=" * 70)
     
     # Letterboxd username
@@ -239,15 +293,15 @@ def setup_configuration(config: dict):
     
     # Save configuration
     print("\n" + "=" * 70)
-    print("💾 Saving configuration...")
+    print("Saving configuration...")
     Config.save(config)
-    print("✅ Configuration saved to ~/.movie_sync/config.json")
+    logger.info("Configuration saved to ~/.movie_sync/config.json")
     print("=" * 70)
     
     # Show FileList.io credentials info
-    print("\n📝 Note: FileList.io credentials will be requested on first run")
+    print("\nNote: FileList.io credentials will be requested on first run")
     print("   They will be encrypted and stored in ~/.movie_sync/")
-    print("\n🎬 You can now run: python main.py")
+    print("\nYou can now run: python main.py")
 
 
 def main():
@@ -259,6 +313,7 @@ Examples:
   %(prog)s                # Run the application
   %(prog)s --config       # Configure settings
   %(prog)s --stats        # Show queue statistics
+  %(prog)s --log-file ~/logs/movie_sync.log --console-level DEBUG
 
 Queue files are stored in: ~/.movie_sync/
   - queue_pending.json      (movies waiting to download)
@@ -276,8 +331,16 @@ Queue files are stored in: ~/.movie_sync/
                        help="Letterboxd username (overrides config)")
     parser.add_argument("--interval", type=int,
                        help="Check interval in seconds (overrides config)")
+    parser.add_argument("--log-file", 
+                       help="Path to log file (default: ~/.movie_sync/movie_sync.log)")
+    parser.add_argument("--console-level", default="INFO",
+                       choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+                       help="Minimum log level for console output (default: INFO)")
     
     args = parser.parse_args()
+    
+    # Set up logging
+    setup_logging(log_file=args.log_file, console_level=args.console_level)
     
     # Load configuration
     config = Config.load()
@@ -289,37 +352,37 @@ Queue files are stored in: ~/.movie_sync/
     
     # Handle stats mode
     if args.stats:
-        print("\n" + "=" * 70)
-        print("📊 Queue Statistics")
-        print("=" * 70)
+        logger.info("=" * 70)
+        logger.info("Queue Statistics")
+        logger.info("=" * 70)
         qm = QueueManager()
         stats = qm.get_statistics()
         
-        print(f"\n📝 Pending:    {stats['pending']}")
-        print(f"❌ Failed:     {stats['failed']}")
-        print(f"✅ Completed:  {stats['completed']}")
-        print(f"⛔ Permanent:  {stats['permanent_failures']}")
+        logger.info(f"Pending:    {stats['pending']}")
+        logger.info(f"Failed:     {stats['failed']}")
+        logger.info(f"Completed:  {stats['completed']}")
+        logger.info(f"Permanent:  {stats['permanent_failures']}")
         
         if stats['failed'] > 0:
-            print(f"\n🔄 Movies ready for retry:")
+            logger.info("Movies ready for retry:")
             ready = qm.get_movies_ready_for_retry(config.get('max_retries', 5))
             if ready:
                 for movie in ready[:5]:  # Show first 5
-                    print(f"   • {movie['title']} (retry #{movie.get('retry_count', 0) + 1})")
+                    logger.info(f"   - {movie['title']} (retry #{movie.get('retry_count', 0) + 1})")
                 if len(ready) > 5:
-                    print(f"   ... and {len(ready) - 5} more")
+                    logger.info(f"   ... and {len(ready) - 5} more")
             else:
-                print("   (none ready yet)")
+                logger.info("   (none ready yet)")
         
         if stats['permanent_failures'] > 0:
-            print(f"\n⛔ Permanent failures:")
+            logger.info("Permanent failures:")
             failures = qm.get_permanent_failures(config.get('max_retries', 5))
             for movie in failures[:5]:  # Show first 5
-                print(f"   • {movie['title']}: {movie.get('last_error', 'Unknown error')}")
+                logger.info(f"   - {movie['title']}: {movie.get('last_error', 'Unknown error')}")
             if len(failures) > 5:
-                print(f"   ... and {len(failures) - 5} more")
+                logger.info(f"   ... and {len(failures) - 5} more")
         
-        print("\n" + "=" * 70)
+        logger.info("=" * 70)
         return 0
     
     # Override config with command-line arguments
@@ -330,9 +393,8 @@ Queue files are stored in: ~/.movie_sync/
     
     # Validate configuration
     if not config.get("username"):
-        print("\n❌ Error: Letterboxd username is required")
-        print("\n�� Run with --config to set up configuration:")
-        print("   python main.py --config")
+        logger.error("Letterboxd username is required")
+        logger.info("Run with --config to set up configuration: python main.py --config")
         return 1
     
     # Run the application

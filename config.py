@@ -1,6 +1,10 @@
 import os
 from typing import Dict, Any
 from pathlib import Path
+import logging
+
+# Module logger
+logger = logging.getLogger(__name__)
 
 class Config:
     # Config directory
@@ -39,7 +43,7 @@ class Config:
                     loaded_config = json.load(f)
                     config.update(loaded_config)
             except Exception as e:
-                print(f"Error loading config: {e}")
+                logger.error(f"Error loading config: {e}")
         
         return config
     
@@ -55,4 +59,4 @@ class Config:
             with open(config_file, 'w') as f:
                 json.dump(config, f, indent=2)
         except Exception as e:
-            print(f"Error saving config: {e}")
+            logger.error(f"Error saving config: {e}")

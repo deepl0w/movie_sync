@@ -8,6 +8,10 @@ import json
 from pathlib import Path
 from cryptography.fernet import Fernet
 from typing import Tuple, Optional, Dict
+import logging
+
+# Module logger
+logger = logging.getLogger(__name__)
 
 
 class CredentialsManager:
@@ -68,7 +72,7 @@ class CredentialsManager:
         
         # Set restrictive permissions
         os.chmod(credentials_file, 0o600)
-        print(f"✓ {service.capitalize()} credentials saved securely")
+        logger.info(f"{service.capitalize()} credentials saved securely")
     
     def get_credentials(self, service: str) -> Tuple[Optional[str], Optional[str]]:
         """Retrieve and decrypt credentials for a service
@@ -95,7 +99,7 @@ class CredentialsManager:
             return credentials.get("username"), credentials.get("password")
             
         except Exception as e:
-            print(f"Warning: Could not read {service} credentials: {e}")
+            logger.warning(f"Warning: Could not read {service} credentials: {e}")
             return None, None
     
     def clear_credentials(self, service: str) -> None:
@@ -108,7 +112,7 @@ class CredentialsManager:
         
         if credentials_file.exists():
             credentials_file.unlink()
-            print(f"{service.capitalize()} credentials cleared.")
+            logger.info(f"{service.capitalize()} credentials cleared.")
     
     def credentials_exist(self, service: str) -> bool:
         """Check if credentials are stored for a service

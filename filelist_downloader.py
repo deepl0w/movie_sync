@@ -5,6 +5,7 @@ Downloads torrents from FileList.io using their official API
 
 import os
 import json
+import logging
 import requests
 from typing import Dict, Optional, List
 from pathlib import Path
@@ -12,6 +13,9 @@ import time
 from download_service import MovieDownloader
 from credentials_manager import CredentialsManager
 from qbittorrent_manager import QBittorrentManager
+
+# Module logger
+logger = logging.getLogger(__name__)
 
 
 class FileListDownloader(MovieDownloader):
@@ -91,10 +95,10 @@ class FileListDownloader(MovieDownloader):
                 with open(config_path, 'r') as f:
                     return json.load(f)
             else:
-                print(f"⚠ Config file not found: {config_file}, using defaults")
+                logger.warning(f"Config file not found: {config_file}, using defaults")
                 return self._get_default_config()
         except Exception as e:
-            print(f"⚠ Error loading config: {e}, using defaults")
+            logger.warning(f"Error loading config, using defaults")
             return self._get_default_config()
     
     def _get_default_config(self) -> Dict:
@@ -121,23 +125,22 @@ class FileListDownloader(MovieDownloader):
         # Get credentials from storage
         username, passkey = self.credentials_manager.get_filelist_credentials()
         if not username or not passkey:
-            print("\n=== FileList.io API Credentials Required ===")
+            print("=== FileList.io API Credentials Required ===")
             print("You need your username and passkey (not password!) from FileList.io")
             print("To get your passkey:")
             print("  1. Log in to https://filelist.io")
             print("  2. Go to your profile settings")
             print("  3. Copy your API passkey")
-            print()
-            username = input("Username: ").strip()
+            username = input("\nUsername: ").strip()
             passkey = input("Passkey: ").strip()
             
             if not username or not passkey:
-                print("Error: Username and passkey are required.")
+                logger.error("Username and passkey are required")
                 return False
             
             # Save credentials
             self.credentials_manager.save_filelist_credentials(username, passkey)
-            print("Credentials saved securely.\n")
+            logger.info("Credentials saved securely")
         
         self.username = username
         self.passkey = passkey
@@ -167,7 +170,7 @@ class FileListDownloader(MovieDownloader):
                 # Clean IMDB ID (accept both tt1234567 and 1234567 formats)
                 imdb_id = movie["imdb_id"].replace("tt", "")
                 params["query"] = imdb_id
-                print(f"  Searching FileList.io API for IMDB: tt{imdb_id}")
+                logger.debug(f"Searching FileList.io API for IMDB: tt{imdb_id}")
             else:
                 # Fallback to title search
                 title = movie.get("title", "")
@@ -175,7 +178,7 @@ class FileListDownloader(MovieDownloader):
                 if "(" in title and ")" in title:
                     title = title.split("(")[0].strip()
                 params["query"] = title
-                print(f"  Searching FileList.io API for: {title}")
+                logger.debug(f"Searching FileList.io API for: {title}")
             
             # Make API request
             response = self.session.get(self.api_url, params=params, timeout=10)
@@ -190,17 +193,17 @@ class FileListDownloader(MovieDownloader):
                 error_msg = data.get("message", "Unknown error")
                 
                 if error_code == 429:
-                    print("  ✗ Rate limit reached (150 calls/hour). Please wait before trying again.")
+                    logger.error("Rate limit reached (150 calls/hour). Please wait before trying again.")
                 elif error_code == 403:
                     if "maxim" in error_msg.lower() or "depasit" in error_msg.lower():
-                        print("  ✗ Too many failed authentications. Please wait an hour.")
+                        logger.error("Too many failed authentications. Please wait an hour.")
                     else:
-                        print(f"  ✗ Invalid credentials: {error_msg}")
+                        logger.error(f"Invalid credentials: {error_msg}")
                         self.credentials_manager.clear_filelist_credentials()
                 elif error_code == 400:
-                    print(f"  ✗ Invalid search parameters: {error_msg}")
+                    logger.error(f"Invalid search parameters: {error_msg}")
                 else:
-                    print(f"  ✗ API Error {error_code}: {error_msg}")
+                    logger.error(f"API Error {error_code}: {error_msg}")
                 
                 return []
             
@@ -224,20 +227,20 @@ class FileListDownloader(MovieDownloader):
                         # Skip problematic items
                         continue
             
-            print(f"  Found {len(results)} torrent(s)")
+            logger.debug(f"  Found {len(results)} torrent(s)")
             return results
             
         except requests.exceptions.Timeout:
-            print("  ✗ Request timed out")
+            logger.error("Request timed out")
             return []
         except requests.exceptions.RequestException as e:
-            print(f"  ✗ Network error occurred")
+            logger.error(f"Network error occurred")
             return []
         except json.JSONDecodeError as e:
-            print(f"  ✗ Failed to parse API response")
+            logger.error(f"Failed to parse API response")
             return []
         except Exception as e:
-            print(f"  ✗ Search error occurred")
+            logger.error(f"Search error occurred")
             return []
     
     def _download_torrent_file(self, torrent_id: str, movie_title: str) -> Optional[str]:
@@ -262,7 +265,7 @@ class FileListDownloader(MovieDownloader):
                 "passkey": self.passkey
             }
             
-            print(f"  Downloading torrent file for: {movie_title}")
+            logger.debug(f"  Downloading torrent file for: {movie_title}")
             
             # Download the .torrent file
             response = self.session.get(download_url, params=params, timeout=30)
@@ -271,7 +274,7 @@ class FileListDownloader(MovieDownloader):
             # Check if we got a valid torrent file
             content_type = response.headers.get("Content-Type", "")
             if "application/x-bittorrent" not in content_type and not response.content.startswith(b"d8:"):
-                print(f"  ✗ Invalid response - not a torrent file (Content-Type: {content_type})")
+                logger.error(f"Invalid response - not a torrent file (Content-Type: {content_type})")
                 return None
             
             # Sanitize filename and save
@@ -281,14 +284,14 @@ class FileListDownloader(MovieDownloader):
             with open(torrent_path, "wb") as f:
                 f.write(response.content)
             
-            print(f"  ✓ Torrent saved to: {torrent_path}")
+            logger.info(f"Torrent saved to: {torrent_path}")
             return str(torrent_path)
             
         except requests.exceptions.RequestException as e:
-            print(f"  ✗ Download failed (network error)")
+            logger.error(f"Download failed (network error)")
             return None
         except Exception as e:
-            print(f"  ✗ Unexpected error downloading torrent")
+            logger.error(f"Unexpected error downloading torrent")
             return None
     
     def _select_best_torrent(self, results: List[Dict]) -> Optional[Dict]:
@@ -313,7 +316,7 @@ class FileListDownloader(MovieDownloader):
         ]
         
         if not viable_torrents:
-            print(f"  ⚠ No torrents with >= {self.minimum_seeders} seeders, trying all results...")
+            logger.warning(f"No torrents with >= {self.minimum_seeders} seeders, trying all results...")
             viable_torrents = results
         
         # Group torrents by category priority
@@ -340,7 +343,7 @@ class FileListDownloader(MovieDownloader):
             f"Category {cat_id}"
         )
         
-        print(f"  → Filtering to '{cat_name}' quality tier ({len(best_quality_torrents)} torrent(s))")
+        logger.debug(f"  -> Filtering to '{cat_name}' quality tier ({len(best_quality_torrents)} torrent(s))")
         
         # Within best quality tier, apply preferences
         candidates = best_quality_torrents
@@ -349,14 +352,14 @@ class FileListDownloader(MovieDownloader):
         if self.prefer_freeleech:
             freeleech_torrents = [t for t in candidates if t.get('freeleech')]
             if freeleech_torrents:
-                print(f"  → Preferring freeleech torrents ({len(freeleech_torrents)} available)")
+                logger.debug(f"  -> Preferring freeleech torrents ({len(freeleech_torrents)} available)")
                 candidates = freeleech_torrents
         
         # Prefer doubleup if enabled (and not already filtered to freeleech)
         if self.prefer_doubleup and not self.prefer_freeleech:
             doubleup_torrents = [t for t in candidates if t.get('doubleup')]
             if doubleup_torrents:
-                print(f"  → Preferring double-up torrents ({len(doubleup_torrents)} available)")
+                logger.debug(f"  -> Preferring double-up torrents ({len(doubleup_torrents)} available)")
                 candidates = doubleup_torrents
         
         # Select torrent with most seeders
@@ -433,31 +436,31 @@ class FileListDownloader(MovieDownloader):
         Returns:
             True if torrent was successfully downloaded, False otherwise
         """
-        print(f"\n{'='*60}")
-        print(f"Downloading: {movie['title']}")
-        print(f"Director: {movie.get('director', 'Unknown')}")
+        logger.info(f"\n{'='*60}")
+        logger.info(f"Downloading: {movie['title']}")
+        logger.info(f"Director: {movie.get('director', 'Unknown')}")
         if movie.get('imdb_id'):
-            print(f"IMDB: https://www.imdb.com/title/{movie['imdb_id']}/")
-        print(f"{'='*60}")
+            logger.info(f"IMDB: https://www.imdb.com/title/{movie['imdb_id']}/")
+        logger.info(f"{'='*60}")
         
         # Check if torrent file already exists locally (using fuzzy matching)
         existing_torrent = self._find_existing_torrent(movie)
         
         if existing_torrent:
-            print(f"  ℹ Torrent file already exists: {existing_torrent}")
+            logger.info(f"  [INFO]  Torrent file already exists: {existing_torrent}")
             
             # Try to add to qBittorrent if enabled
             if self.use_qbittorrent and self.qbt_manager:
-                print(f"  Checking if already in qBittorrent...")
+                logger.debug(f"  Checking if already in qBittorrent...")
                 if self.qbt_manager.add_torrent(
                     torrent_path=str(existing_torrent),
                     save_path=self.qbt_save_path,
                     category=self.qbt_category,
                     tags=self.qbt_tags
                 ):
-                    print(f"  ✓ Torrent added to qBittorrent (or already exists)")
+                    logger.info(f"Torrent added to qBittorrent (or already exists)")
                 else:
-                    print(f"  ⚠ Could not add to qBittorrent")
+                    logger.warning(f"Could not add to qBittorrent")
                     return False
             
             return True
@@ -466,11 +469,11 @@ class FileListDownloader(MovieDownloader):
         results = self._search_movie(movie)
         
         if not results:
-            print("✗ No torrents found for this movie.")
+            logger.error("No torrents found for this movie.")
             return False
         
         # Display results
-        print(f"\nFound {len(results)} torrent(s):")
+        logger.debug(f"\nFound {len(results)} torrent(s):")
         for i, result in enumerate(results, 1):
             cat_id = result.get('category')
             cat_name = next(
@@ -480,52 +483,52 @@ class FileListDownloader(MovieDownloader):
             priority = self.category_priority.get(cat_id, 999)
             freeleech = " [FREELEECH]" if result.get('freeleech') else ""
             doubleup = " [2x UPLOAD]" if result.get('doubleup') else ""
-            print(f"{i}. [{cat_name}] {result['name']}{freeleech}{doubleup}")
-            print(f"   Size: {result['size']} | Seeders: {result['seeders']} | Leechers: {result.get('leechers', 0)}")
+            logger.info(f"{i}. [{cat_name}] {result['name']}{freeleech}{doubleup}")
+            logger.info(f"   Size: {result['size']} | Seeders: {result['seeders']} | Leechers: {result.get('leechers', 0)}")
         
         # Select best torrent based on quality priority
         best_torrent = self._select_best_torrent(results)
         
         if not best_torrent:
-            print("✗ No suitable torrent found after filtering.")
+            logger.error("No suitable torrent found after filtering.")
             return False
         
-        print(f"\n✓ Selected: {best_torrent['name']}")
-        print(f"  Seeders: {best_torrent['seeders']} | Size: {best_torrent['size']}")
+        logger.info(f"\n[OK]  Selected: {best_torrent['name']}")
+        logger.info(f"  Seeders: {best_torrent['seeders']} | Size: {best_torrent['size']}")
         
         # Download the torrent file
         if best_torrent['id']:
             torrent_path = self._download_torrent_file(best_torrent['id'], movie['title'])
             if torrent_path:
-                print(f"✓ Successfully downloaded torrent for {movie['title']}")
+                logger.info(f"Successfully downloaded torrent for {movie['title']}")
                 
                 # Add to qBittorrent if enabled
                 if self.use_qbittorrent and self.qbt_manager:
-                    print(f"\n  Adding to qBittorrent...")
+                    logger.info(f"\n  Adding to qBittorrent...")
                     if self.qbt_manager.add_torrent(
                         torrent_path=torrent_path,
                         save_path=self.qbt_save_path,
                         category=self.qbt_category,
                         tags=self.qbt_tags
                     ):
-                        print(f"  ✓ Torrent added to qBittorrent and download started")
+                        logger.info(f"Torrent added to qBittorrent and download started")
                     else:
-                        print(f"  ⚠ Could not add to qBittorrent (torrent file saved locally)")
+                        logger.warning(f"Could not add to qBittorrent (torrent file saved locally)")
                         return False
                 
                 return True
         
-        print(f"✗ Failed to download torrent for {movie['title']}")
+        logger.error(f"Failed to download torrent for {movie['title']}")
         return False
     
     def process_downloads(self) -> None:
         """Process the download queue"""
         pending = [m for m in self.queue if m["status"] == "pending"]
         if not pending:
-            print("No pending downloads.")
+            logger.info("No pending downloads.")
             return
         
-        print(f"\nProcessing {len(pending)} pending download(s)...")
+        logger.info(f"\nProcessing {len(pending)} pending download(s)...")
         
         for movie in pending:
             success = self.download_movie(movie)
@@ -542,4 +545,4 @@ class FileListDownloader(MovieDownloader):
             # Rate limiting between downloads
             time.sleep(2)
         
-        print("\n✓ Download queue processed.")
+        logger.info("\n[OK]  Download queue processed.")

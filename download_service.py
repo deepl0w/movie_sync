@@ -4,6 +4,10 @@ import os
 import time
 from abc import ABC, abstractmethod
 from pathlib import Path
+import logging
+
+# Module logger
+logger = logging.getLogger(__name__)
 
 class MovieDownloader:
     """Interface for downloading movies from the watchlist."""
@@ -23,7 +27,7 @@ class MovieDownloader:
                 with open(self.queue_file, 'r') as f:
                     self.queue = json.load(f)
             except Exception as e:
-                print(f"Error loading download queue: {e}")
+                logger.error(f"Error loading download queue: {e}")
                 self.queue = []
         else:
             self.queue = []
@@ -53,9 +57,9 @@ class MovieDownloader:
         # For now, we'll just log that downloads would occur
         pending = [m for m in self.queue if m["status"] == "pending"]
         if pending:
-            print(f"Would download {len(pending)} movies:")
+            logger.info(f"Would download {len(pending)} movies:")
             for movie in pending:
-                print(f"  - {movie['title']}")
+                logger.info(f"  - {movie['title']}")
                 # Here you would call your actual downloader
                 # self.download_movie(movie)
                 
@@ -73,7 +77,7 @@ class MovieDownloader:
         actual download implementation.
         """
         # Implement your actual download logic here
-        print(f"Downloading movie: {movie['title']}")
+        logger.info(f"Downloading movie: {movie['title']}")
         
         # Simulate download success
         return True
@@ -83,7 +87,7 @@ class CustomMovieDownloader(MovieDownloader):
     def download_movie(self, movie: Dict) -> bool:
         """Custom implementation of movie downloading."""
         # Example implementation
-        print(f"Custom downloader searching for {movie['title']}")
+        logger.info(f"Custom downloader searching for {movie['title']}")
         
         # Add your torrent/download implementation here
         # ...

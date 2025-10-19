@@ -76,7 +76,7 @@ class TestConfig:
         assert saved_config["username"] == "saveuser"
         assert saved_config["check_interval"] == 1800
     
-    def test_load_config_handles_invalid_json(self, temp_dir, mocker, capsys):
+    def test_load_config_handles_invalid_json(self, temp_dir, mocker, caplog):
         """Test handling of invalid JSON in config file"""
         # Mock config directory to use temp_dir
         mocker.patch.object(Config, 'CONFIG_DIR', temp_dir)
@@ -92,10 +92,9 @@ class TestConfig:
         assert config["username"] == ""
         assert "watchlist_file" in config
         
-        captured = capsys.readouterr()
-        assert "Error loading config" in captured.out
+        assert "Error loading config" in caplog.text
     
-    def test_save_config_handles_errors(self, temp_dir, mocker, capsys):
+    def test_save_config_handles_errors(self, temp_dir, mocker, caplog):
         """Test error handling when saving config fails"""
         # Mock config directory to use temp_dir
         mocker.patch.object(Config, 'CONFIG_DIR', temp_dir)
@@ -107,8 +106,7 @@ class TestConfig:
         
         Config.save(config_data)
         
-        captured = capsys.readouterr()
-        assert "Error saving config" in captured.out
+        assert "Error saving config" in caplog.text
     
     def test_config_merge_with_defaults(self, temp_dir, mocker):
         """Test that loaded config merges with defaults"""

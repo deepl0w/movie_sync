@@ -6,11 +6,15 @@ Separate threads for monitoring watchlist and downloading movies
 import threading
 import time
 import signal
+import logging
 from typing import Dict, Optional
 from pathlib import Path
 from queue_manager import QueueManager
 from monitor import LetterboxdWatchlistMonitor
 from filelist_downloader import FileListDownloader
+
+# Module logger
+logger = logging.getLogger(__name__)
 
 
 class MonitorWorker(threading.Thread):
@@ -44,7 +48,7 @@ class MonitorWorker(threading.Thread):
     def run(self):
         """Main worker loop"""
         self.running = True
-        print(f"🎬 Monitor worker started (checking every {self.check_interval}s)")
+        logger.info(f"[MONITOR]  Monitor worker started (checking every {self.check_interval}s)")
         
         # Run immediately on start
         self._check_watchlist()
@@ -58,17 +62,17 @@ class MonitorWorker(threading.Thread):
             self._check_watchlist()
         
         self.running = False
-        print("🎬 Monitor worker stopped")
+        logger.info("[MONITOR]  Monitor worker stopped")
     
     def _check_watchlist(self):
         """Check watchlist and add new movies to queue"""
         try:
-            print("\n" + "=" * 70)
-            print("📺 Checking Letterboxd watchlist...")
+            # Separator
+            logger.info("[CHECK]  Checking Letterboxd watchlist...")
             
             # Fetch current watchlist
             current_watchlist = self.monitor.get_watchlist()
-            print(f"   Found {len(current_watchlist)} movies in watchlist")
+            logger.info(f"[CHECK]  Found {len(current_watchlist)} movies in watchlist")
             
             # Load saved watchlist
             saved_watchlist = self.monitor.load_saved_watchlist()
@@ -78,50 +82,50 @@ class MonitorWorker(threading.Thread):
 
             added_count = 0
             if new_movies:
-                print(f"   🆕 Found {len(new_movies)} new movie(s):")
+                logger.info(f"[NEW]  Found {len(new_movies)} new movie(s):")
             else:
-                print("   ✓ No new movies found")
+                logger.info("No new movies found")
                
             for movie in current_watchlist:
                 # Check if already completed
                 if self.queue_manager.is_completed(movie.get('id')):
-                    print(f"      ✓ {movie['title']} (already downloaded)")
+                    logger.debug(f"[OK]  {movie['title']} (already downloaded)")
                     continue
                 
                 # Add to pending queue
                 if self.queue_manager.add_to_pending(movie):
                     director_info = f" - {movie.get('director', 'Unknown')}" if movie.get('director') != 'Unknown' else ''
-                    print(f"      + {movie['title']}{director_info}")
+                    logger.info(f"[NEW]  + {movie['title']}{director_info}")
                     added_count += 1
                 else:
-                    print(f"      ⏭ {movie['title']} (already in queue)")
+                    logger.debug(f"[SKIP]  {movie['title']} (already in queue)")
             
             if added_count > 0:
-                print(f"   ✓ Added {added_count} movie(s) to download queue")
+                logger.info(f"Added {added_count} movie(s) to download queue")
             
             # Track removed movies (movies no longer in watchlist)
             current_ids = [str(m.get('id', '')) for m in current_watchlist if m.get('id')]
             removed_count = self.queue_manager.mark_movies_as_removed(current_ids)
             if removed_count > 0:
-                print(f"   📤 Marked {removed_count} movie(s) for removal (no longer in watchlist)")
+                logger.info(f"[REMOVE]  Marked {removed_count} movie(s) for removal (no longer in watchlist)")
             
             # Save current watchlist
             self.monitor.save_watchlist(current_watchlist)
             
             # Show queue statistics
             stats = self.queue_manager.get_statistics()
-            print(f"   📊 Queue status: {stats['pending']} pending, "
+            logger.info(f"[STATS]  Queue status: {stats['pending']} pending, "
                   f"{stats['failed']} failed, {stats['completed']} completed, "
                   f"{stats['removed']} removed")
             
         except Exception as e:
-            print(f"   ✗ Error checking watchlist: {e}")
+            logger.error(f"Error checking watchlist: {e}")
             import traceback
             traceback.print_exc()
     
     def stop(self):
         """Stop the worker thread gracefully"""
-        print("🛑 Stopping monitor worker...")
+        logger.info("[STOP]  Stopping monitor worker...")
         self.stop_event.set()
 
 
@@ -160,7 +164,7 @@ class DownloadWorker(threading.Thread):
     def run(self):
         """Main worker loop"""
         self.running = True
-        print(f"⬇️  Download worker started (retry interval: {self.retry_interval}s)")
+        logger.info(f"[DOWNLOAD]  Download worker started (retry interval: {self.retry_interval}s)")
         
         # Process any pending downloads immediately
         self._process_pending_movies()
@@ -178,7 +182,7 @@ class DownloadWorker(threading.Thread):
             self._process_retries()
         
         self.running = False
-        print("⬇️  Download worker stopped")
+        logger.info("[DOWNLOAD]  Download worker stopped")
     
     def _process_pending_movies(self):
         """Process movies from pending queue"""
@@ -191,7 +195,7 @@ class DownloadWorker(threading.Thread):
             try:
                 self._download_movie(movie)
             except Exception as e:
-                print(f"✗ Unexpected error processing {movie.get('title', 'Unknown')}: {e}")
+                logger.error(f"Unexpected error processing {movie.get('title', 'Unknown')}: {e}")
                 import traceback
                 traceback.print_exc()
                 
@@ -212,12 +216,12 @@ class DownloadWorker(threading.Thread):
         ready_movies = self.queue_manager.get_movies_ready_for_retry(self.max_retries)
         
         if ready_movies:
-            print(f"\n🔄 Processing {len(ready_movies)} movie(s) ready for retry...")
+            logger.info(f"[RETRY]  Processing {len(ready_movies)} movie(s) ready for retry...")
             for movie in ready_movies:
                 if self.stop_event.is_set():
                     break
                 
-                print(f"   Retrying: {movie['title']} (attempt {movie.get('retry_count', 0) + 1}/{self.max_retries})")
+                logger.info(f"[RETRY]  Retrying: {movie['title']} (attempt {movie.get('retry_count', 0) + 1}/{self.max_retries})")
                 self.queue_manager.move_failed_to_pending(movie)
     
     def _download_movie(self, movie: Dict):
@@ -231,16 +235,16 @@ class DownloadWorker(threading.Thread):
         
         # Check if already downloaded (fuzzy matching)
         if self._is_movie_downloaded(movie):
-            print(f"\n✓ {title} - Already downloaded")
+            logger.info(f"{title} - Already downloaded")
             self.queue_manager.add_to_completed(movie)
             return
         
         # Attempt download
-        print(f"\n⬇️  Processing: {title}")
+        logger.info(f"[DOWNLOAD]  Processing: {title}")
         success = self.downloader.download_movie(movie)
         
         if success:
-            print(f"✓ Successfully downloaded: {title}")
+            logger.info(f"Successfully downloaded: {title}")
             self.queue_manager.add_to_completed(movie)
         else:
             # Download failed - determine reason and calculate retry
@@ -251,7 +255,7 @@ class DownloadWorker(threading.Thread):
             if retry_count >= self.max_retries - 1:
                 error_msg = "Download failed - max retries reached"
             
-            print(f"✗ {error_msg}: {title}")
+            logger.error(f"{error_msg}: {title}")
             self.queue_manager.add_to_failed(movie, error_msg, retry_after)
     
     def _is_movie_downloaded(self, movie: Dict) -> bool:
@@ -331,7 +335,7 @@ class DownloadWorker(threading.Thread):
     
     def stop(self):
         """Stop the worker thread gracefully"""
-        print("🛑 Stopping download worker...")
+        logger.info("[STOP]  Stopping download worker...")
         self.stop_event.set()
 
 
@@ -370,9 +374,9 @@ class CleanupWorker(threading.Thread):
         self.running = True
         
         if not self.enabled:
-            print(f"🧹 Cleanup worker started (DISABLED - no deletions will occur)")
+            logger.warning(f"[CLEANUP]  Cleanup worker started (DISABLED - no deletions will occur)")
         else:
-            print(f"🧹 Cleanup worker started (grace period: {self.grace_period}s, "
+            logger.info(f"[CLEANUP]  Cleanup worker started (grace period: {self.grace_period}s, "
                   f"check interval: {self.check_interval}s)")
         
         # Run periodically
@@ -385,7 +389,7 @@ class CleanupWorker(threading.Thread):
                 self._process_removals()
         
         self.running = False
-        print("🧹 Cleanup worker stopped")
+        logger.info("[CLEANUP]  Cleanup worker stopped")
     
     def _process_removals(self):
         """Process movies ready for deletion"""
@@ -396,7 +400,7 @@ class CleanupWorker(threading.Thread):
             if not movies_to_delete:
                 return
             
-            print(f"\n🧹 Processing {len(movies_to_delete)} movie(s) for cleanup...")
+            logger.info(f"[CLEANUP]  Processing {len(movies_to_delete)} movie(s) for cleanup...")
             
             for movie in movies_to_delete:
                 title = movie.get('title', 'Unknown')
@@ -407,7 +411,7 @@ class CleanupWorker(threading.Thread):
                 if not movie_id:
                     continue
                 
-                print(f"\n   🗑️  Cleaning up: {title} ({year})")
+                logger.info(f"[DELETE]  Cleaning up: {title} ({year})")
                 print(f"      Removed from watchlist: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(removed_at))}")
                 
                 # Perform cleanup
@@ -422,27 +426,27 @@ class CleanupWorker(threading.Thread):
                 if results['files_deleted'] or results['torrent_deleted'] or results['qbt_removed']:
                     # Remove from removed queue
                     self.queue_manager.remove_from_removed_queue(movie_id)
-                    print(f"      ✓ Cleanup complete for: {title}")
+                    logger.info(f"Cleanup complete for: {title}")
                 else:
-                    print(f"      ⚠️  No files found to delete for: {title}")
+                    logger.warning(f"No files found to delete for: {title}")
                     # Still remove from queue even if nothing was found
                     self.queue_manager.remove_from_removed_queue(movie_id)
                 
                 if results['errors']:
-                    print(f"      ⚠️  Errors during cleanup:")
+                    logger.warning(f"Errors during cleanup:")
                     for error in results['errors']:
                         print(f"         - {error}")
             
-            print(f"✓ Cleanup processing complete")
+            logger.info(f"Cleanup processing complete")
             
         except Exception as e:
-            print(f"✗ Error during cleanup: {e}")
+            logger.error(f"Error during cleanup: {e}")
             import traceback
             traceback.print_exc()
     
     def stop(self):
         """Stop the worker thread gracefully"""
-        print("🛑 Stopping cleanup worker...")
+        logger.info("[STOP]  Stopping cleanup worker...")
         self.stop_event.set()
 
 

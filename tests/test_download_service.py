@@ -43,7 +43,7 @@ class TestMovieDownloader:
         
         assert downloader.queue == []
     
-    def test_load_corrupted_queue(self, temp_dir, capsys):
+    def test_load_corrupted_queue(self, temp_dir, caplog):
         """Test loading corrupted queue file"""
         queue_file = temp_dir / "corrupted.json"
         queue_file.write_text("invalid json {{{")
@@ -51,8 +51,7 @@ class TestMovieDownloader:
         downloader = MovieDownloader(str(queue_file))
         
         assert downloader.queue == []
-        captured = capsys.readouterr()
-        assert "Error loading" in captured.out
+        assert "Error loading" in caplog.text
     
     def test_save_queue(self, temp_dir, sample_movie):
         """Test saving queue to file"""
@@ -138,7 +137,7 @@ class TestMovieDownloader:
         assert downloader.queue[0]["status"] == "downloaded"
         assert "downloaded_at" in downloader.queue[0]
     
-    def test_download_movie_placeholder(self, temp_dir, sample_movie, capsys):
+    def test_download_movie_placeholder(self, temp_dir, sample_movie, caplog):
         """Test that base download_movie is a placeholder"""
         queue_file = temp_dir / "queue.json"
         downloader = MovieDownloader(str(queue_file))
@@ -146,5 +145,4 @@ class TestMovieDownloader:
         result = downloader.download_movie(sample_movie)
         
         assert result is True
-        captured = capsys.readouterr()
-        assert "Downloading movie" in captured.out
+        assert "Downloading movie" in caplog.text

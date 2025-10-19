@@ -9,6 +9,10 @@ import os
 from pathlib import Path
 from typing import Optional
 from credentials_manager import CredentialsManager
+import logging
+
+# Module logger
+logger = logging.getLogger(__name__)
 
 import qbittorrentapi
 
@@ -29,7 +33,7 @@ class QBittorrentManager:
             use_stored_credentials: Load credentials from encrypted storage if available
         """
         if qbittorrentapi is None:
-            print("⚠ qbittorrent-api not installed. Install with: pip install qbittorrent-api")
+            logger.warning("qbittorrent-api not installed. Install with: pip install qbittorrent-api")
             self.client = None
             return
         
@@ -64,7 +68,7 @@ class QBittorrentManager:
         print("\n=== qBittorrent Web UI Credentials ===")
         print("If your qBittorrent Web UI requires authentication, enter credentials.")
         print("Otherwise, just press Enter to skip (leave empty).")
-        print()
+        print("")
         
         username = input("qBittorrent username (or press Enter): ").strip()
         password = input("qBittorrent password (or press Enter): ").strip()
@@ -72,7 +76,7 @@ class QBittorrentManager:
         # Save if provided
         if username or password:
             self.credentials_manager.save_qbittorrent_credentials(username, password)
-            print()
+            logger.info("")
         
         return username, password
     
@@ -82,7 +86,7 @@ class QBittorrentManager:
         if self._connect():
             return True
         
-        print("  qBittorrent not running, attempting to start...")
+        logger.info("  qBittorrent not running, attempting to start...")
         
         # Try to start qBittorrent
         try:
@@ -93,18 +97,18 @@ class QBittorrentManager:
                 stderr=subprocess.DEVNULL,
                 start_new_session=True
             )
-            print("  Started qBittorrent GUI...")
+            logger.info("  Started qBittorrent GUI...")
             
             # Wait a bit for it to start
             for i in range(10):
                 time.sleep(1)
                 if self._connect():
-                    print("  ✓ Connected to qBittorrent")
+                    logger.info("Connected to qBittorrent")
                     return True
             
-            print("  ⚠ qBittorrent started but Web UI not accessible")
-            print("    Please enable Web UI in qBittorrent settings:")
-            print("    Tools → Options → Web UI → Enable Web User Interface")
+            logger.warning("qBittorrent started but Web UI not accessible")
+            logger.warning("  Please enable Web UI in qBittorrent settings:")
+            logger.warning("  Tools -> Options -> Web UI -> Enable Web User Interface")
             return False
             
         except FileNotFoundError:
@@ -116,18 +120,18 @@ class QBittorrentManager:
                     stderr=subprocess.DEVNULL,
                     start_new_session=True
                 )
-                print("  Started qBittorrent headless...")
+                logger.info("  Started qBittorrent headless...")
                 
                 # Wait for it to start
                 for i in range(10):
                     time.sleep(1)
                     if self._connect():
-                        print("  ✓ Connected to qBittorrent")
+                        logger.info("Connected to qBittorrent")
                         return True
                         
             except FileNotFoundError:
-                print("  ✗ qBittorrent not found in PATH")
-                print("    Please install qBittorrent or start it manually")
+                logger.error("qBittorrent not found in PATH")
+                logger.error("  Please install qBittorrent or start it manually")
                 return False
         
         return False
@@ -158,7 +162,7 @@ class QBittorrentManager:
             return True
         except qbittorrentapi.LoginFailed:
             if not self.connection_failed:
-                print("  ✗ qBittorrent login failed - check username/password")
+                logger.error("qBittorrent login failed - check username/password")
                 self.connection_failed = True
             return False
         except Exception as e:
@@ -180,19 +184,19 @@ class QBittorrentManager:
             True if torrent was added successfully
         """
         if qbittorrentapi is None:
-            print("  ✗ qbittorrent-api not available")
+            logger.error("qbittorrent-api not available")
             return False
         
         # Ensure qBittorrent is running and connected
         if not self._ensure_qbittorrent_running():
-            print("  ✗ Could not connect to qBittorrent")
+            logger.error("Could not connect to qBittorrent")
             return False
         
         try:
             # Verify torrent file exists
             torrent_path = Path(torrent_path)
             if not torrent_path.exists():
-                print(f"  ✗ Torrent file not found: {torrent_path}")
+                logger.error(f"Torrent file not found: {torrent_path}")
                 return False
             
             # Create category if it doesn't exist
@@ -216,17 +220,17 @@ class QBittorrentManager:
             )
             
             if result == "Ok.":
-                print(f"  ✓ Added to qBittorrent (Category: {category})")
+                logger.info(f"Added to qBittorrent (Category: {category})")
                 return True
             else:
-                print(f"  ⚠ qBittorrent response: {result}")
+                logger.warning(f"qBittorrent response: {result}")
                 return True  # Still consider it success
                 
         except qbittorrentapi.Conflict409Error:
-            print("  ℹ Torrent already exists in qBittorrent")
+            logger.info("Torrent already exists in qBittorrent")
             return True  # Already exists is OK
         except Exception as e:
-            print(f"  ✗ Failed to add torrent: {e}")
+            logger.error(f"Failed to add torrent: {e}")
             return False
     
     def get_torrent_info(self, torrent_hash: str) -> Optional[dict]:
@@ -273,29 +277,29 @@ class QBittorrentManager:
                 for t in torrents
             ]
         except Exception as e:
-            print(f"  ✗ Failed to list torrents: {e}")
+            logger.error(f"Failed to list torrents: {e}")
             return []
 
 
 if __name__ == "__main__":
     # Test qBittorrent connection
-    print("qBittorrent Manager Test")
-    print("=" * 60)
+    logger.info("qBittorrent Manager Test")
+    logger.info("=" * 60)
     
     manager = QBittorrentManager()
     
     if manager._ensure_qbittorrent_running():
-        print("\n✓ qBittorrent is running and accessible")
+        logger.info("\n[OK] qBittorrent is running and accessible")
         
         # List current torrents
         torrents = manager.list_torrents()
-        print(f"\nCurrent torrents: {len(torrents)}")
+        logger.info(f"\nCurrent torrents: {len(torrents)}")
         for i, t in enumerate(torrents[:5], 1):
-            print(f"{i}. {t['name'][:50]}")
-            print(f"   Progress: {t['progress']:.1f}% | State: {t['state']}")
+            logger.info(f"{i}. {t['name'][:50]}")
+            logger.info(f"   Progress: {t['progress']:.1f}% | State: {t['state']}")
     else:
-        print("\n✗ Could not connect to qBittorrent")
-        print("\nPlease ensure:")
-        print("  1. qBittorrent is installed")
-        print("  2. Web UI is enabled (Tools → Options → Web UI)")
-        print("  3. Web UI port is 8080 (default)")
+        logger.error("\nCould not connect to qBittorrent")
+        logger.info("\nPlease ensure:")
+        logger.info("  1. qBittorrent is installed")
+        logger.info("  2. Web UI is enabled (Tools -> Options -> Web UI)")
+        logger.info("  3. Web UI port is 8080 (default)")

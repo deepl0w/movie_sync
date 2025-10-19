@@ -145,7 +145,7 @@ class TestLetterboxdWatchlistMonitor:
         assert director == "Steven Spielberg"
     
     @responses.activate
-    def test_get_movie_details_error_handling(self, temp_dir, capsys):
+    def test_get_movie_details_error_handling(self, temp_dir, caplog):
         """Test error handling when fetching movie details fails"""
         responses.add(
             responses.GET,
@@ -158,8 +158,7 @@ class TestLetterboxdWatchlistMonitor:
         
         assert director == "Unknown"
         assert imdb_id is None
-        captured = capsys.readouterr()
-        assert "Warning" in captured.out or "could not fetch" in captured.out.lower()
+        assert "warning" in caplog.text.lower() or "could not fetch" in caplog.text.lower()
     
     def test_save_and_load_watchlist(self, temp_dir, sample_watchlist):
         """Test saving and loading watchlist from file"""
@@ -186,7 +185,7 @@ class TestLetterboxdWatchlistMonitor:
         
         assert loaded == []
     
-    def test_load_corrupted_watchlist(self, temp_dir, capsys):
+    def test_load_corrupted_watchlist(self, temp_dir, caplog):
         """Test loading corrupted watchlist file"""
         watchlist_file = temp_dir / "corrupted.json"
         watchlist_file.write_text("invalid json {{{")
@@ -195,8 +194,7 @@ class TestLetterboxdWatchlistMonitor:
         loaded = monitor.load_saved_watchlist()
         
         assert loaded == []
-        captured = capsys.readouterr()
-        assert "Error loading" in captured.out
+        assert "error loading" in caplog.text.lower()
     
     def test_find_new_movies(self, temp_dir, sample_watchlist):
         """Test finding new movies added to watchlist"""

@@ -6,6 +6,10 @@ import os
 import re
 from typing import List, Dict, Optional
 from pathlib import Path
+import logging
+
+# Module logger
+logger = logging.getLogger(__name__)
 
 class LetterboxdWatchlistMonitor:
     """Monitor for Letterboxd watchlist - only fetches and tracks watchlist changes"""
@@ -43,7 +47,7 @@ class LetterboxdWatchlistMonitor:
         while True:
             try:
                 url = f"{base_url}page/{page}/" if page > 1 else base_url
-                print(f"Fetching watchlist page {page}...")
+                logger.debug(f"Fetching watchlist page {page}...")
             except:
                 break
             
@@ -60,7 +64,7 @@ class LetterboxdWatchlistMonitor:
                 if not movie_items:
                     break
                 
-                print(f"Found {len(movie_items)} movies on page {page}")
+                logger.debug(f"Found {len(movie_items)} movies on page {page}")
                 total_movies_found += len(movie_items)
                 
                 for item in movie_items:
@@ -84,7 +88,7 @@ class LetterboxdWatchlistMonitor:
                             imdb_id = saved_movies_dict[film_id].get("imdb_id")
                         elif fetch_directors:
                             # Fetch movie details from the film page (only for new movies)
-                            print(f"  Fetching details for new movie: {title}")
+                            logger.debug(f"  Fetching details for new movie: {title}")
                             director, imdb_id = self._get_movie_details(film_slug)
                             time.sleep(0.5)  # Small delay to avoid rate limiting
                         else:
@@ -108,10 +112,10 @@ class LetterboxdWatchlistMonitor:
                 time.sleep(1)
                 
             except Exception as e:
-                print(f"Error fetching watchlist page {page}: {e}")
+                logger.error(f"Error fetching watchlist page {page}: {e}")
                 break
         
-        print(f"Total movies found across {page-1} pages: {total_movies_found}")
+        logger.info(f"Total movies found across {page-1} pages: {total_movies_found}")
         return movies
     
     def _get_movie_details(self, film_slug: str) -> tuple[str, str]:
@@ -156,7 +160,7 @@ class LetterboxdWatchlistMonitor:
             
             return director, imdb_id
         except Exception as e:
-            print(f"  Warning: Could not fetch details for {film_slug}: {e}")
+            logger.warning(f"  Warning: Could not fetch details for {film_slug}: {e}")
             return "Unknown", None
     
     def load_saved_watchlist(self) -> List[Dict]:
@@ -168,7 +172,7 @@ class LetterboxdWatchlistMonitor:
             with open(self.watchlist_file, 'r') as f:
                 return json.load(f)
         except Exception as e:
-            print(f"Error loading watchlist file: {e}")
+            logger.error(f"Error loading watchlist file: {e}")
             return []
     
     def save_watchlist(self, movies: List[Dict]) -> None:
@@ -200,8 +204,8 @@ if __name__ == "__main__":
     )
     
     # Fetch and save watchlist
-    print(f"Fetching watchlist for user: {args.username}")
+    logger.debug(f"Fetching watchlist for user: {args.username}")
     movies = monitor.get_watchlist()
-    print(f"\nFound {len(movies)} movies")
+    logger.debug(f"\nFound {len(movies)} movies")
     monitor.save_watchlist(movies)
-    print(f"Saved to {args.file}")
+    logger.info(f"Saved to {args.file}")

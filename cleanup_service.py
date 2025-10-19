@@ -5,10 +5,14 @@ Handles deletion of torrents, files, and qBittorrent entries for removed movies
 
 import os
 import shutil
+import logging
 from pathlib import Path
 from typing import Dict, List, Optional
 from difflib import SequenceMatcher
 import re
+
+# Module logger
+logger = logging.getLogger(__name__)
 
 
 class CleanupService:
@@ -61,11 +65,11 @@ class CleanupService:
                 deleted = self._delete_movie_files(title, year)
                 results['files_deleted'] = deleted
                 if deleted:
-                    print(f"  🗑️  Deleted movie files for: {title} ({year})")
+                    logger.info(f"[DELETE]  Deleted movie files for: {title} ({year})")
             except Exception as e:
                 error_msg = f"Error deleting files: {e}"
                 results['errors'].append(error_msg)
-                print(f"  ⚠️  {error_msg}")
+                logger.warning(f"{error_msg}")
         
         # Delete torrent file
         if delete_torrent and self.torrent_dir.exists():
@@ -73,11 +77,11 @@ class CleanupService:
                 deleted = self._delete_torrent_file(title, year)
                 results['torrent_deleted'] = deleted
                 if deleted:
-                    print(f"  🗑️  Deleted torrent file for: {title} ({year})")
+                    logger.info(f"[DELETE]  Deleted torrent file for: {title} ({year})")
             except Exception as e:
                 error_msg = f"Error deleting torrent: {e}"
                 results['errors'].append(error_msg)
-                print(f"  ⚠️  {error_msg}")
+                logger.warning(f"{error_msg}")
         
         # Remove from qBittorrent
         if remove_from_qbt and self.qbt_manager:
@@ -85,11 +89,11 @@ class CleanupService:
                 removed = self._remove_from_qbittorrent(title, year)
                 results['qbt_removed'] = removed
                 if removed:
-                    print(f"  🗑️  Removed from qBittorrent: {title} ({year})")
+                    logger.info(f"[DELETE]  Removed from qBittorrent: {title} ({year})")
             except Exception as e:
                 error_msg = f"Error removing from qBittorrent: {e}"
                 results['errors'].append(error_msg)
-                print(f"  ⚠️  {error_msg}")
+                logger.warning(f"  {error_msg}")
         
         return results
     
@@ -233,7 +237,7 @@ class CleanupService:
                         return True
         
         except Exception as e:
-            print(f"  ⚠️  Error accessing qBittorrent: {e}")
+            logger.warning(f"Error accessing qBittorrent: {e}")
             return False
         
         return False
@@ -261,12 +265,12 @@ class CleanupService:
         try:
             if path.is_file():
                 path.unlink()
-                print(f"    Deleted file: {path.name}")
+                logger.debug(f"[DELETE]  Deleted file: {path.name}")
             elif path.is_dir():
                 shutil.rmtree(path)
-                print(f"    Deleted directory: {path.name}")
+                logger.debug(f"[DELETE]  Deleted directory: {path.name}")
         except Exception as e:
-            print(f"    Warning: Could not delete {path.name}: {e}")
+            logger.warning(f"Could not delete {path.name}: {e}")
     
     def get_cleanup_preview(self, movie: Dict) -> Dict[str, List[str]]:
         """
@@ -321,6 +325,6 @@ class CleanupService:
                     if normalized_title in torrent_name and (not year or str(year) in torrent_name):
                         preview['qbt_torrents'].append(torrent.name)
             except Exception as e:
-                print(f"  ⚠️  Error accessing qBittorrent: {e}")
+                logger.warning(f"Error accessing qBittorrent: {e}")
         
         return preview

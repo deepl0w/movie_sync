@@ -45,7 +45,7 @@ class TestFileListDownloader:
         assert downloader.category_priority[4] == 2  # HD has priority 2
         assert downloader.prefer_freeleech is True
     
-    def test_load_config_missing_file(self, temp_dir, mocker, capsys):
+    def test_load_config_missing_file(self, temp_dir, mocker, caplog):
         """Test handling of missing config file"""
         mocker.patch('filelist_downloader.CredentialsManager')
         mocker.patch('filelist_downloader.QBittorrentManager', return_value=None)
@@ -58,8 +58,7 @@ class TestFileListDownloader:
         
         # Should use defaults
         assert len(downloader.movie_categories) == 4
-        captured = capsys.readouterr()
-        assert "not found" in captured.out.lower()
+        assert "not found" in caplog.text.lower()
     
     def test_get_credentials_from_storage(self, temp_dir, mocker):
         """Test getting credentials from storage"""
@@ -160,7 +159,7 @@ class TestFileListDownloader:
         assert "Matrix" in params["query"]
     
     @responses.activate
-    def test_search_movie_rate_limit_error(self, temp_dir, mocker, capsys):
+    def test_search_movie_rate_limit_error(self, temp_dir, mocker, caplog):
         """Test handling of rate limit error (429)"""
         mock_creds = mocker.patch('filelist_downloader.CredentialsManager')
         mock_instance = mock_creds.return_value
@@ -183,8 +182,7 @@ class TestFileListDownloader:
         results = downloader._search_movie({"title": "Test Movie"})
         
         assert results == []
-        captured = capsys.readouterr()
-        assert "Rate limit" in captured.out
+        assert "Rate limit" in caplog.text
     
     @responses.activate
     def test_search_movie_invalid_credentials(self, temp_dir, mocker, capsys):
@@ -344,7 +342,7 @@ class TestFileListDownloader:
         assert Path(result).read_bytes() == torrent_content
     
     @responses.activate
-    def test_download_torrent_file_invalid_response(self, temp_dir, mocker, capsys):
+    def test_download_torrent_file_invalid_response(self, temp_dir, mocker, caplog):
         """Test handling invalid torrent file response"""
         mock_creds = mocker.patch('filelist_downloader.CredentialsManager')
         mock_instance = mock_creds.return_value
@@ -369,8 +367,7 @@ class TestFileListDownloader:
         result = downloader._download_torrent_file("12345", "Test Movie")
         
         assert result is None
-        captured = capsys.readouterr()
-        assert "not a torrent file" in captured.out.lower()
+        assert "not a torrent file" in caplog.text.lower()
     
     @responses.activate
     def test_download_movie_full_workflow(self, temp_dir, sample_movie, sample_torrent_result, mocker):
@@ -454,7 +451,7 @@ class TestFileListDownloader:
         mock_qbt.add_torrent.assert_called_once()
     
     @responses.activate
-    def test_download_movie_no_results(self, temp_dir, sample_movie, mocker, capsys):
+    def test_download_movie_no_results(self, temp_dir, sample_movie, mocker, caplog):
         """Test downloading movie when no search results found"""
         mock_creds = mocker.patch('filelist_downloader.CredentialsManager')
         mock_instance = mock_creds.return_value
@@ -477,8 +474,7 @@ class TestFileListDownloader:
         result = downloader.download_movie(sample_movie)
         
         assert result is False
-        captured = capsys.readouterr()
-        assert "No torrents found" in captured.out
+        assert "No torrents found" in caplog.text
 
 
 class TestFuzzyMatching:

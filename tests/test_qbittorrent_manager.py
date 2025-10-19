@@ -10,7 +10,7 @@ from qbittorrent_manager import QBittorrentManager
 class TestQBittorrentManager:
     """Test cases for the QBittorrentManager class"""
     
-    def test_initialization_without_qbittorrentapi(self, mocker, capsys):
+    def test_initialization_without_qbittorrentapi(self, mocker, caplog):
         """Test initialization when qbittorrentapi is not available"""
         # Mock the import to fail
         mocker.patch('qbittorrent_manager.qbittorrentapi', None)
@@ -18,8 +18,7 @@ class TestQBittorrentManager:
         manager = QBittorrentManager()
         
         assert manager.client is None
-        captured = capsys.readouterr()
-        assert "qbittorrent-api not installed" in captured.out
+        assert "qbittorrent-api not installed" in caplog.text
     
     def test_initialization_with_credentials(self, mocker):
         """Test initialization with provided credentials"""
@@ -84,7 +83,7 @@ class TestQBittorrentManager:
             password="pass"
         )
     
-    def test_connect_login_failed(self, mocker, capsys):
+    def test_connect_login_failed(self, mocker, caplog):
         """Test connection failure due to invalid credentials"""
         mock_qbt_api = mocker.patch('qbittorrent_manager.qbittorrentapi')
         
@@ -106,8 +105,7 @@ class TestQBittorrentManager:
         
         assert result is False
         assert manager.connection_failed is True
-        captured = capsys.readouterr()
-        assert "login failed" in captured.out.lower()
+        assert "login failed" in caplog.text.lower()
     
     def test_connect_connection_error(self, mocker):
         """Test connection failure when qBittorrent is not running"""
@@ -141,7 +139,7 @@ class TestQBittorrentManager:
         
         assert result is True
     
-    def test_ensure_qbittorrent_running_starts_process(self, mocker, mock_qbt_client, capsys):
+    def test_ensure_qbittorrent_running_starts_process(self, mocker, mock_qbt_client, caplog):
         """Test starting qBittorrent when not running"""
         mock_qbt_api = mocker.patch('qbittorrent_manager.qbittorrentapi')
         
@@ -158,10 +156,9 @@ class TestQBittorrentManager:
         
         assert result is True
         mock_popen.assert_called()
-        captured = capsys.readouterr()
-        assert "Started qBittorrent" in captured.out
+        assert "started qbittorrent" in caplog.text.lower()
     
-    def test_ensure_qbittorrent_running_not_found(self, mocker, capsys):
+    def test_ensure_qbittorrent_running_not_found(self, mocker, caplog):
         """Test when qBittorrent executable is not found"""
         manager = QBittorrentManager(use_stored_credentials=False)
         manager._connect = MagicMock(return_value=False)
@@ -171,8 +168,7 @@ class TestQBittorrentManager:
         result = manager._ensure_qbittorrent_running()
         
         assert result is False
-        captured = capsys.readouterr()
-        assert "not found" in captured.out.lower()
+        assert "not found" in caplog.text.lower()
     
     def test_add_torrent_success(self, mocker, mock_qbt_client, temp_dir):
         """Test successfully adding a torrent"""
@@ -197,7 +193,7 @@ class TestQBittorrentManager:
         assert result is True
         mock_qbt_client.torrents_add.assert_called_once()
     
-    def test_add_torrent_file_not_found(self, mocker, capsys):
+    def test_add_torrent_file_not_found(self, mocker, caplog):
         """Test adding a torrent when file doesn't exist"""
         mock_qbt_api = mocker.patch('qbittorrent_manager.qbittorrentapi')
         
@@ -207,8 +203,7 @@ class TestQBittorrentManager:
         result = manager.add_torrent("/nonexistent/file.torrent")
         
         assert result is False
-        captured = capsys.readouterr()
-        assert "not found" in captured.out.lower()
+        assert "not found" in caplog.text.lower()
     
     def test_add_torrent_already_exists(self, mocker, mock_qbt_client, temp_dir):
         """Test adding a torrent that already exists"""
@@ -251,7 +246,7 @@ class TestQBittorrentManager:
         
         mock_qbt_client.torrents_create_category.assert_called_once_with("NewCategory")
     
-    def test_add_torrent_qbittorrent_not_available(self, mocker, capsys):
+    def test_add_torrent_qbittorrent_not_available(self, mocker, caplog):
         """Test adding torrent when qBittorrent API is not available"""
         mocker.patch('qbittorrent_manager.qbittorrentapi', None)
         
@@ -259,8 +254,7 @@ class TestQBittorrentManager:
         result = manager.add_torrent("/path/to/file.torrent")
         
         assert result is False
-        captured = capsys.readouterr()
-        assert "not available" in captured.out.lower()
+        assert "not available" in caplog.text.lower()
     
     def test_get_torrent_info_success(self, mocker, mock_qbt_client):
         """Test getting torrent information"""
@@ -350,7 +344,7 @@ class TestQBittorrentManager:
         
         mock_qbt_client.torrents_info.assert_called_once_with(category="Movies")
     
-    def test_list_torrents_connection_error(self, mocker, mock_qbt_client, capsys):
+    def test_list_torrents_connection_error(self, mocker, mock_qbt_client, caplog):
         """Test listing torrents when connection fails"""
         mock_qbt_api = mocker.patch('qbittorrent_manager.qbittorrentapi')
         mock_qbt_api.Client.return_value = mock_qbt_client
@@ -362,5 +356,4 @@ class TestQBittorrentManager:
         torrents = manager.list_torrents()
         
         assert torrents == []
-        captured = capsys.readouterr()
-        assert "Failed to list torrents" in captured.out
+        assert "failed to list torrents" in caplog.text.lower()

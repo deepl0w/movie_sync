@@ -11,6 +11,10 @@ import threading
 from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime
+import logging
+
+# Module logger
+logger = logging.getLogger(__name__)
 
 
 class QueueManager:
@@ -57,7 +61,7 @@ class QueueManager:
         self.completed_queue = self._load_json(self.completed_file, [])
         self.removed_queue = self._load_json(self.removed_file, [])
         
-        print(f"📋 Loaded queues: {len(self.pending_queue)} pending, "
+        logger.info(f"[QUEUE] Loaded queues: {len(self.pending_queue)} pending, "
               f"{len(self.failed_queue)} failed, {len(self.completed_queue)} completed, "
               f"{len(self.removed_queue)} removed")
     
@@ -70,7 +74,7 @@ class QueueManager:
             with open(filepath, 'r') as f:
                 return json.load(f)
         except Exception as e:
-            print(f"⚠ Error loading {filepath.name}: {e}")
+            logger.error(f"[WARNING] Error loading {filepath.name}: {e}")
             return default
     
     def _save_json(self, filepath: Path, data: List) -> None:
@@ -84,7 +88,7 @@ class QueueManager:
             # Atomic rename
             temp_file.replace(filepath)
         except Exception as e:
-            print(f"⚠ Error saving {filepath.name}: {e}")
+            logger.error(f"[WARNING] Error saving {filepath.name}: {e}")
     
     # === PENDING QUEUE OPERATIONS ===
     
@@ -284,7 +288,7 @@ class QueueManager:
             
             removed = original_count - len(self.completed_queue)
             if removed > 0:
-                print(f"🧹 Cleaned up {removed} old completed entries")
+                logger.info(f"[CLEANUP] Cleaned up {removed} old completed entries")
             return removed
     
     def reset_failed_movie(self, movie_id: str) -> bool:
@@ -403,7 +407,7 @@ class QueueManager:
                 self.completed_queue = [m for m in self.completed_queue if m.get('id') != movie.get('id')]
                 if self.add_to_removed(movie):
                     removed_count += 1
-                    print(f"📤 Marked for removal: {movie.get('title', 'Unknown')} (removed from watchlist)")
+                    logger.info(f"[REMOVE] Marked for removal: {movie.get('title', 'Unknown')} (removed from watchlist)")
             
             if movies_to_remove:
                 self._save_json(self.completed_file, self.completed_queue)
@@ -419,7 +423,7 @@ class QueueManager:
                 self.pending_queue = [m for m in self.pending_queue if m.get('id') != movie.get('id')]
                 if self.add_to_removed(movie):
                     removed_count += 1
-                    print(f"📤 Marked for removal: {movie.get('title', 'Unknown')} (removed from watchlist)")
+                    logger.info(f"[REMOVE] Marked for removal: {movie.get('title', 'Unknown')} (removed from watchlist)")
             
             if movies_to_remove:
                 self._save_json(self.pending_file, self.pending_queue)
