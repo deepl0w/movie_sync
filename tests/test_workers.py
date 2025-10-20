@@ -285,6 +285,31 @@ class TestMonitorWorkerFuzzyMatching:
         result = worker._is_movie_downloaded(movie)
         
         assert result is True
+    
+    def test_is_movie_downloaded_title_with_year_in_parentheses(self, temp_dir, mocker):
+        """Test detecting movie when title includes year in parentheses (regression test for Amadeus bug)"""
+        # Mock dependencies
+        mock_queue = mocker.MagicMock()
+        mock_downloader = mocker.MagicMock()
+        
+        # Create test movie file (filename has year without parentheses)
+        download_dir = temp_dir / "downloads"
+        download_dir.mkdir()
+        movie_file = download_dir / "Amadeus.1984.Directors.Cut.1080p.BluRay.DDP5.1.x264-Seal.mkv"
+        movie_file.write_text("fake movie content")
+        
+        worker = DownloadWorker(mock_queue, mock_downloader, str(download_dir))
+        
+        # Movie title from queue has year in parentheses
+        movie = {
+            'title': 'Amadeus (1984)',
+            'year': '1984'
+        }
+        
+        result = worker._is_movie_downloaded(movie)
+        
+        # Should match despite parentheses in title vs no parentheses in filename
+        assert result is True
 
 
 class TestDownloadSpaceLimit:

@@ -60,6 +60,11 @@ class WebInterface(threading.Thread):
         self.monitor_worker = monitor_worker
         self.current_config = Config.load()
         self.app = Flask(__name__, template_folder='templates', static_folder='static')
+        
+        # Enable auto-reload for templates and static files in development
+        self.app.config['TEMPLATES_AUTO_RELOAD'] = True
+        self.app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0  # Disable caching for static files
+        
         CORS(self.app)
         
         self.running = False

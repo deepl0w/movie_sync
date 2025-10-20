@@ -390,8 +390,12 @@ class DownloadWorker(threading.Thread):
         title = movie.get('title', '')
         year = movie.get('year', '')
         
+        # Remove year in parentheses from title first (e.g., "Amadeus (1984)" -> "Amadeus")
+        # This is needed because filenames typically have "Amadeus.1984" not "Amadeus.(1984)"
+        title_without_year = re.sub(r'\s*\(\d{4}\)\s*$', '', title)
+        
         # Normalize title for matching
-        normalized_title = title.lower().replace(' ', '.').replace(':', '').replace("'", '')
+        normalized_title = title_without_year.lower().replace(' ', '.').replace(':', '').replace("'", '')
         
         # Search through files
         for file_path in self.download_dir.rglob('*'):
