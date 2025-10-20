@@ -29,7 +29,22 @@
 
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-    background: var(--bg-primary);
+    background: linear-gradient(to bottom, 
+        rgba(102, 126, 234, 0.4) 0%,
+        rgba(109, 121, 232, 0.35) 8%,
+        rgba(116, 119, 229, 0.3) 15%,
+        rgba(120, 115, 222, 0.25) 22%,
+        rgba(118, 75, 162, 0.22) 30%,
+        rgba(109, 68, 146, 0.18) 38%,
+        rgba(93, 61, 125, 0.14) 46%,
+        rgba(77, 54, 104, 0.11) 54%,
+        rgba(61, 47, 83, 0.08) 62%,
+        rgba(45, 40, 62, 0.05) 70%,
+        rgba(29, 33, 41, 0.03) 78%,
+        rgba(21, 21, 24, 0.01) 86%,
+        rgba(15, 15, 15, 0) 94%,
+        rgba(15, 15, 15, 0) 100%) var(--bg-primary);
+    background-attachment: fixed;
     color: var(--text-primary);
     padding: 0;
     margin: 0;
@@ -40,45 +55,49 @@ body {
 .container {
     max-width: 1600px;
     margin: 0 auto;
-    padding: 20px;
+    padding: 0 20px 20px 20px;
 }
 
 header {
-    background: var(--primary-gradient);
-    padding: clamp(20px, 5vw, 40px);
-    border-radius: var(--radius-lg);
-    margin-bottom: 30px;
-    box-shadow: var(--shadow-lg);
+    background: transparent;
+    padding: clamp(40px, 8vw, 80px) 0 clamp(30px, 6vw, 60px);
+    margin: 0 0 30px 0;
+    border-radius: 0;
+    box-shadow: none;
     position: relative;
-    overflow: hidden;
+    overflow: visible;
 }
 
 header::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: radial-gradient(circle at top right, rgba(255,255,255,0.1) 0%, transparent 60%);
-    pointer-events: none;
+    display: none;
 }
 
 h1 {
-    font-size: clamp(24px, 5vw, 36px);
-    font-weight: 700;
-    margin-bottom: 8px;
-    letter-spacing: -0.5px;
+    font-size: clamp(32px, 6vw, 48px);
+    font-weight: 800;
+    margin-bottom: 12px;
+    letter-spacing: -1px;
     position: relative;
     z-index: 1;
+    color: #ffffff;
+    text-shadow: 
+        0 2px 4px rgba(0, 0, 0, 0.3),
+        0 4px 12px rgba(0, 0, 0, 0.4),
+        0 8px 24px rgba(102, 126, 234, 0.5),
+        0 12px 40px rgba(118, 75, 162, 0.3);
+    filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.5));
 }
 
 .subtitle {
-    opacity: 0.95;
-    font-size: clamp(13px, 3vw, 15px);
+    opacity: 0.9;
+    font-size: clamp(14px, 3vw, 16px);
     font-weight: 400;
     position: relative;
     z-index: 1;
+    color: rgba(255, 255, 255, 0.85);
+    text-shadow: 
+        0 1px 3px rgba(0, 0, 0, 0.4),
+        0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .stats {
