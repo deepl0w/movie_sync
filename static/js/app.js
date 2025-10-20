@@ -66,13 +66,13 @@ async function loadQueue(queueName) {
             return;
         }
         
-        container.innerHTML = movies.map(movie => createMovieItem(movie, queueName)).join('');
+        container.innerHTML = movies.map((movie, index) => createMovieItem(movie, queueName, index)).join('');
     } catch (error) {
         console.error(`Error loading ${queueName} queue:`, error);
     }
 }
 
-function createMovieItem(movie, queueName) {
+function createMovieItem(movie, queueName, index) {
     const title = movie.title || 'Unknown';
     const year = movie.year || '';
     const director = movie.director || '';
@@ -120,19 +120,25 @@ function createMovieItem(movie, queueName) {
         }
     }
     
+    // Don't show badges or errors for completed movies
     let badges = '';
-    if (retryCount > 0) {
-        badges += `<span class="badge badge-retry">Retry #${retryCount}</span>`;
+    if (queueName !== 'completed') {
+        if (retryCount > 0) {
+            badges += `<span class="badge badge-retry">Retry #${retryCount}</span>`;
+        }
+        if (lastError) {
+            badges += `<span class="badge badge-error">Error</span>`;
+        }
+        if (skipped) {
+            badges += `<span class="badge badge-skipped">⏸ Skipped</span>`;
+        }
+        if (failedReason === 'space_limit') {
+            badges += `<span class="badge badge-warning">💾 Space Limit</span>`;
+        }
     }
-    if (lastError) {
-        badges += `<span class="badge badge-error">Error</span>`;
-    }
-    if (skipped) {
-        badges += `<span class="badge badge-skipped">⏸ Skipped</span>`;
-    }
-    if (failedReason === 'space_limit') {
-        badges += `<span class="badge badge-warning">💾 Space Limit</span>`;
-    }
+    
+    // Don't show last error for completed movies
+    const showError = (queueName !== 'completed' && lastError);
     
     return `
         <div class="movie-item ${skipped ? 'skipped' : ''}" 
@@ -148,7 +154,7 @@ function createMovieItem(movie, queueName) {
                     <div class="movie-title">${title} ${badges}</div>
                     <div class="movie-meta">
                         ${director ? `Director: ${director}` : ''}
-                        ${lastError ? `<br>Error: ${lastError}` : ''}
+                        ${showError ? `<br>Error: ${lastError}` : ''}
                     </div>
                 </div>
             </div>

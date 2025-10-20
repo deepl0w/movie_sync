@@ -524,6 +524,15 @@ class WebInterface(threading.Thread):
                 # Insert at new position
                 queue.insert(target_index, dragged_movie)
                 
+                # Save the reordered queue to file
+                file_map = {
+                    'pending': self.queue_manager.pending_file,
+                    'failed': self.queue_manager.failed_file,
+                    'completed': self.queue_manager.completed_file,
+                    'removed': self.queue_manager.removed_file
+                }
+                self.queue_manager._save_json(file_map[queue_name], queue)
+                
                 return jsonify({
                     "success": True,
                     "message": "Queue reordered"
