@@ -683,5 +683,52 @@ class TestButtonScenarios:
         assert not any(m['id'] == movie_id for m in removed_movies)
 
 
+class TestUpdateWatchlistEndpoint:
+    """Tests for the /api/update-watchlist endpoint"""
+    
+    def test_update_watchlist_success(self, temp_data_dir):
+        """Test successful watchlist update"""
+        queue_manager = QueueManager(str(temp_data_dir))
+        
+        # Create a mock monitor worker with _check_watchlist method
+        mock_monitor = MagicMock()
+        mock_monitor._check_watchlist = MagicMock()
+        
+        web = WebInterface(
+            queue_manager=queue_manager,
+            monitor_worker=mock_monitor
+        )
+        
+        with web.app.test_client() as client:
+            response = client.post('/api/update-watchlist')
+            data = json.loads(response.data)
+            
+            assert response.status_code == 200
+            assert data['success'] is True
+            assert 'message' in data
+            
+            # Verify the monitor worker's check method was called
+            mock_monitor._check_watchlist.assert_called_once()
+    
+    def test_update_watchlist_without_monitor_worker(self, temp_data_dir):
+        """Test update watchlist when monitor worker is not available"""
+        queue_manager = QueueManager(str(temp_data_dir))
+        
+        # Create WebInterface without monitor_worker
+        web = WebInterface(
+            queue_manager=queue_manager,
+            monitor_worker=None
+        )
+        
+        with web.app.test_client() as client:
+            response = client.post('/api/update-watchlist')
+            data = json.loads(response.data)
+            
+            assert response.status_code == 400
+            assert data['success'] is False
+            assert 'error' in data
+            assert 'not available' in data['error'].lower()
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])

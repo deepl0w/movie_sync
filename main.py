@@ -206,7 +206,8 @@ def run_movie_sync(config: dict, enable_web: bool = False, web_port: int = 5000)
                 port=web_port,
                 log_file=log_file,
                 config_callback=reload_config_callback,
-                cleanup_service=cleanup_service
+                cleanup_service=cleanup_service,
+                monitor_worker=monitor_worker
             )
     
     # Set up graceful shutdown

@@ -33,7 +33,7 @@ class WebInterface(threading.Thread):
     def __init__(self, queue_manager: QueueManager, port: int = 5000, 
                  host: str = "0.0.0.0", log_file: Optional[str] = None,
                  config_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
-                 cleanup_service = None):
+                 cleanup_service = None, monitor_worker = None):
         """
         Initialize web interface
         
@@ -44,6 +44,7 @@ class WebInterface(threading.Thread):
             log_file: Path to log file to display
             config_callback: Callback function to reload config in workers
             cleanup_service: CleanupService instance for force delete operations
+            monitor_worker: MonitorWorker instance for triggering watchlist updates
         """
         super().__init__(daemon=True, name="WebInterface")
         
@@ -56,6 +57,7 @@ class WebInterface(threading.Thread):
         self.log_file = log_file
         self.config_callback = config_callback
         self.cleanup_service = cleanup_service
+        self.monitor_worker = monitor_worker
         self.current_config = Config.load()
         self.app = Flask(__name__, template_folder='templates', static_folder='static')
         CORS(self.app)
@@ -609,6 +611,28 @@ class WebInterface(threading.Thread):
                 })
             except Exception as e:
                 logger.error(f"Error updating config: {e}")
+                return jsonify({"error": str(e)}), 500
+        
+        @self.app.route('/api/update-watchlist', methods=['POST'])
+        def update_watchlist():
+            """Trigger an immediate watchlist update"""
+            try:
+                if not self.monitor_worker:
+                    return jsonify({
+                        "success": False,
+                        "error": "Monitor worker not available"
+                    }), 400
+                
+                # Trigger the watchlist check
+                logger.info("[WEB] Force update watchlist triggered from web interface")
+                self.monitor_worker._check_watchlist()
+                
+                return jsonify({
+                    "success": True,
+                    "message": "Watchlist updated successfully"
+                })
+            except Exception as e:
+                logger.error(f"Error updating watchlist: {e}")
                 return jsonify({"error": str(e)}), 500
     
     def run(self):
