@@ -207,9 +207,8 @@ class QueueManager:
             self.failed_queue = [m for m in self.failed_queue if m.get('id') != movie.get('id')]
             self._save_json(self.failed_file, self.failed_queue)
         
-        # Add to pending queue
+        # Add to pending queue (retry_count is preserved for tracking)
         movie['status'] = 'pending'
-        movie['retry_attempt'] = movie.get('retry_count', 0)
         with self.pending_lock:
             self.pending_queue.append(movie)
             self._save_json(self.pending_file, self.pending_queue)

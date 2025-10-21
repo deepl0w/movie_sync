@@ -3,42 +3,50 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Movie Sync - Dashboard</title>
+    <title>Movie Sync</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>🎬 Movie Sync Dashboard</h1>
-            <div class="subtitle">Monitor and manage your Letterboxd to FileList.io sync</div>
-        </header>
-        
-        <div class="stats" id="stats">
-            <div class="stat-card pending">
-                <div class="stat-label">Pending</div>
-                <div class="stat-value" id="stat-pending">0</div>
-            </div>
-            <div class="stat-card failed">
-                <div class="stat-label">Failed</div>
-                <div class="stat-value" id="stat-failed">0</div>
-            </div>
-            <div class="stat-card completed">
-                <div class="stat-label">Completed</div>
-                <div class="stat-value" id="stat-completed">0</div>
-            </div>
-            <div class="stat-card removed">
-                <div class="stat-label">Removed</div>
-                <div class="stat-value" id="stat-removed">0</div>
+    <header>
+        <div class="header-content">
+            <h1>🎬 Movie Sync</h1>
+            <button class="update-watchlist-btn" onclick="updateWatchlist()" title="Force update Letterboxd watchlist">
+                <span class="spinner">↻</span>
+                <span class="text">Update Watchlist</span>
+            </button>
+            <button class="burger-menu" onclick="toggleMenu()" aria-label="Menu">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+            <div class="tabs" id="nav-menu">
+                <button class="tab" onclick="showTab('logs')">Logs</button>
+                <button class="tab" onclick="showTab('config')">⚙️ Config</button>
             </div>
         </div>
+    </header>
+    <div class="menu-overlay" id="menu-overlay" onclick="toggleMenu()"></div>
+    
+    <div class="container">
+        <div class="subtitle">Monitor and manage your Letterboxd to FileList.io sync</div>
         
-        <div class="tabs">
-            <button class="tab active" onclick="showTab('pending')">Pending Queue</button>
-            <button class="tab" onclick="showTab('failed')">Failed Queue</button>
-            <button class="tab" onclick="showTab('completed')">Completed</button>
-            <button class="tab" onclick="showTab('removed')">Removed</button>
-            <button class="tab" onclick="showTab('logs')">Logs</button>
-            <button class="tab" onclick="showTab('config')">⚙️ Config</button>
+        <div class="stats" id="stats">
+            <div class="stat-card pending" onclick="showTab('pending')">
+                <div class="stat-value" id="stat-pending">0</div>
+                <div class="stat-label">Pending</div>
+            </div>
+            <div class="stat-card failed" onclick="showTab('failed')">
+                <div class="stat-value" id="stat-failed">0</div>
+                <div class="stat-label">Failed</div>
+            </div>
+            <div class="stat-card completed" onclick="showTab('completed')">
+                <div class="stat-value" id="stat-completed">0</div>
+                <div class="stat-label">Completed</div>
+            </div>
+            <div class="stat-card removed" onclick="showTab('removed')">
+                <div class="stat-value" id="stat-removed">0</div>
+                <div class="stat-label">Removed</div>
+            </div>
         </div>
         
         <div id="pending-tab" class="queue-container">
@@ -73,11 +81,6 @@
                 </form>
             </div>
         </div>
-        
-        <button class="update-watchlist-btn" onclick="updateWatchlist()" title="Force update Letterboxd watchlist">
-            <span class="spinner">↻</span>
-            <span class="text">🔄 Update Watchlist</span>
-        </button>
     </div>
     
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>

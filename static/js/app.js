@@ -3,6 +3,17 @@ let currentTab = 'pending';
 function showTab(tabName) {
     currentTab = tabName;
     
+    // Close mobile menu if open
+    const menu = document.getElementById('nav-menu');
+    const overlay = document.getElementById('menu-overlay');
+    const burger = document.querySelector('.burger-menu');
+    
+    if (menu && menu.classList.contains('active')) {
+        menu.classList.remove('active');
+        overlay.classList.remove('active');
+        burger.classList.remove('active');
+    }
+    
     // Update tab buttons
     document.querySelectorAll('.tab').forEach(tab => {
         tab.classList.remove('active');
@@ -144,6 +155,7 @@ function createMovieItem(movie, queueName, index) {
         <div class="movie-item ${skipped ? 'skipped' : ''}" 
              draggable="true" 
              data-movie-id="${movie.id}"
+             onclick="handleMovieItemClick(event)"
              ondragstart="handleDragStart(event)"
              ondragend="handleDragEnd(event)"
              ondragover="handleDragOver(event)"
@@ -324,6 +336,51 @@ async function forceDeleteMovie(movieId) {
 
 // Drag and drop handlers
 let draggedItem = null;
+
+// Handle movie item click for mobile
+function handleMovieItemClick(event) {
+    // Only on mobile devices
+    if (window.innerWidth > 768) {
+        return;
+    }
+    
+    // Don't toggle if clicking on buttons
+    if (event.target.closest('button')) {
+        return;
+    }
+    
+    const movieItem = event.currentTarget;
+    
+    // Close all other movie items
+    document.querySelectorAll('.movie-item.active').forEach(item => {
+        if (item !== movieItem) {
+            item.classList.remove('active');
+        }
+    });
+    
+    // Toggle this item
+    movieItem.classList.toggle('active');
+}
+
+function toggleMenu() {
+    const menu = document.getElementById('nav-menu');
+    const overlay = document.getElementById('menu-overlay');
+    const burger = document.querySelector('.burger-menu');
+    
+    menu.classList.toggle('active');
+    overlay.classList.toggle('active');
+    burger.classList.toggle('active');
+}
+
+function toggleMenu() {
+    const menu = document.getElementById('nav-menu');
+    const overlay = document.getElementById('menu-overlay');
+    const burger = document.querySelector('.burger-menu');
+    
+    menu.classList.toggle('active');
+    overlay.classList.toggle('active');
+    burger.classList.toggle('active');
+}
 
 function handleDragStart(event) {
     draggedItem = event.target;
@@ -587,3 +644,24 @@ setInterval(refreshData, 10000);
 
 // Initial load
 refreshData();
+
+// Gradient scroll effect
+function updateGradientPosition() {
+    const scrollY = window.scrollY;
+    document.documentElement.style.setProperty('--scroll-y', `${scrollY}px`);
+}
+
+// Update gradient position on scroll with throttling for better performance
+let ticking = false;
+window.addEventListener('scroll', () => {
+    if (!ticking) {
+        window.requestAnimationFrame(() => {
+            updateGradientPosition();
+            ticking = false;
+        });
+        ticking = true;
+    }
+});
+
+// Initial gradient position
+updateGradientPosition();
