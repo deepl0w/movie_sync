@@ -711,3 +711,34 @@ class TestFuzzyMatching:
         result = downloader._find_existing_torrent(movie)
         
         assert result is None
+    
+    def test_target_movie_short_title(self, temp_dir, mocker):
+        """Test when torrent directory is empty"""
+        mock_creds = mocker.patch('filelist_downloader.CredentialsManager')
+        mock_instance = mock_creds.return_value
+        mock_instance.get_filelist_credentials.return_value = ("user", "pass")
+        mocker.patch('filelist_downloader.QBittorrentManager', return_value=None)
+        
+        # Create empty torrent directory
+        torrent_dir = temp_dir / "torrents"
+        torrent_dir.mkdir()
+        
+        # Less exact match
+        torrent1 = torrent_dir / "Le jeune Karl Marx 2017 REPACK 1080p BluRay DD5.1 x264-EA.torrent"
+        torrent1.write_text("fake torrent content")
+        
+        downloader = FileListDownloader(
+            queue_file=str(temp_dir / "queue.json"),
+            torrent_dir=str(torrent_dir),
+            use_qbittorrent=False
+        )
+        
+        movie = {
+            'title': 'X (2022)',
+            'year': 2022
+        }
+        
+        result = downloader._find_existing_torrent(movie)
+        
+        # Should not match
+        assert result is None

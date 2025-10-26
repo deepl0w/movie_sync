@@ -430,8 +430,12 @@ class TestDownloadSpaceLimit:
         
         worker._download_movie(movie)
         
-        # Verify download was attempted
-        mock_downloader.download_movie.assert_called_once_with(movie)
+        # Verify download was attempted with callback
+        assert mock_downloader.download_movie.call_count == 1
+        args, kwargs = mock_downloader.download_movie.call_args
+        assert args[0] == movie
+        assert 'callback' in kwargs
+        assert callable(kwargs['callback'])
         
-        # Verify movie was added to completed queue
-        mock_queue.add_to_completed.assert_called_once_with(movie)
+        # Verify movie was not added to completed queue yet (callback should do it)
+        mock_queue.add_to_completed.assert_not_called()

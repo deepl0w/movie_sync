@@ -3,6 +3,7 @@ Worker Threads for Movie Sync
 Separate threads for monitoring watchlist and downloading movies
 """
 
+import re
 import threading
 import time
 import signal
@@ -333,12 +334,9 @@ class DownloadWorker(threading.Thread):
         
         # Attempt download
         logger.info(f"[DOWNLOAD]  Processing: {title}")
-        success = self.downloader.download_movie(movie)
+        success = self.downloader.download_movie(movie, callback=lambda : self.queue_manager.add_to_completed(movie))
         
-        if success:
-            logger.info(f"Successfully downloaded: {title}")
-            self.queue_manager.add_to_completed(movie)
-        else:
+        if not success:
             # Download failed - determine reason and calculate retry
             retry_count = movie.get('retry_count', 0)
             retry_after = self._calculate_retry_time(retry_count)
@@ -390,12 +388,15 @@ class DownloadWorker(threading.Thread):
         title = movie.get('title', '')
         year = movie.get('year', '')
         
-        # Remove year in parentheses from title first (e.g., "Amadeus (1984)" -> "Amadeus")
-        # This is needed because filenames typically have "Amadeus.1984" not "Amadeus.(1984)"
-        title_without_year = re.sub(r'\s*\(\d{4}\)\s*$', '', title)
+        # Strip year from title if present in parentheses (e.g., "Amadeus (1984)" -> "Amadeus")
+        title_clean = re.sub(r'\s*\(\d{4}\)\s*$', '', title).strip()
         
         # Normalize title for matching
-        normalized_title = title_without_year.lower().replace(' ', '.').replace(':', '').replace("'", '')
+        normalized_title = title_clean.lower().replace(' ', '.').replace(':', '').replace("'", '')
+        
+        # Search through torrent files
+        best_match = None
+        best_similarity = 0
         
         # Search through files
         for file_path in self.download_dir.rglob('*'):
@@ -416,7 +417,7 @@ class DownloadWorker(threading.Thread):
             
             # Second check: fuzzy matching on title portion only
             # Extract title portion (before quality indicators like 1080p, bluray, etc.)
-            title_part = re.split(r'\d{3,4}p|bluray|brrip|webrip|hdtv|dvdrip|x264|x265|h264|h265', 
+            title_part = re.split(r'\d{3,4}p|2160p|1080p|720p|bluray|brrip|webrip|hdtv|dvdrip|x264|x265|h264|h265',
                                 filename, flags=re.IGNORECASE)[0]
             
             # Calculate similarity
@@ -427,7 +428,7 @@ class DownloadWorker(threading.Thread):
                 similarity += 0.10
             
             # Lower threshold for fuzzy matching (75% instead of 85%)
-            if similarity >= 0.75:
+            if similarity >= 0.75 and similarity > best_similarity:
                 return True
         
         return False

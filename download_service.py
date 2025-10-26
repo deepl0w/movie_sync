@@ -3,6 +3,7 @@ import json
 import os
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from pathlib import Path
 import logging
 
@@ -11,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 class MovieDownloader:
     """Interface for downloading movies from the watchlist."""
-    
+
     def __init__(self, queue_file: Optional[str] = None):
         # Use default path in ~/.movie_sync if not specified
         if queue_file is None:
@@ -19,7 +20,7 @@ class MovieDownloader:
             queue_file = str(config_dir / "download_queue.json")
         self.queue_file = queue_file
         self._load_queue()
-    
+
     def _load_queue(self) -> None:
         """Load the download queue from file."""
         if os.path.exists(self.queue_file):
@@ -31,12 +32,12 @@ class MovieDownloader:
                 self.queue = []
         else:
             self.queue = []
-    
+
     def _save_queue(self) -> None:
         """Save the download queue to file."""
         with open(self.queue_file, 'w') as f:
             json.dump(self.queue, f, indent=2)
-    
+
     def queue_movie(self, movie: Dict) -> None:
         """Add a movie to the download queue."""
         # Add to queue with status
@@ -47,10 +48,10 @@ class MovieDownloader:
         }
         self.queue.append(download_item)
         self._save_queue()
-        
+
         # Start the download process
         self.process_downloads()
-    
+
     def process_downloads(self) -> None:
         """Process the download queue."""
         # This would typically be implemented with actual download logic
@@ -62,34 +63,22 @@ class MovieDownloader:
                 logger.info(f"  - {movie['title']}")
                 # Here you would call your actual downloader
                 # self.download_movie(movie)
-                
+
                 # Mark as downloaded in the queue
                 movie["status"] = "downloaded"
                 movie["downloaded_at"] = int(time.time())
-            
+
             self._save_queue()
-    
-    def download_movie(self, movie: Dict) -> bool:
+
+    def download_movie(self, movie: Dict, callback: Callable[[], None] | None = None) -> bool:
         """
         Download a movie - to be implemented by user.
-        
-        This is a placeholder method that should be replaced with 
+
+        This is a placeholder method that should be replaced with
         actual download implementation.
         """
         # Implement your actual download logic here
         logger.info(f"Downloading movie: {movie['title']}")
-        
-        # Simulate download success
-        return True
 
-# The user can extend this class with their actual download implementation
-class CustomMovieDownloader(MovieDownloader):
-    def download_movie(self, movie: Dict) -> bool:
-        """Custom implementation of movie downloading."""
-        # Example implementation
-        logger.info(f"Custom downloader searching for {movie['title']}")
-        
-        # Add your torrent/download implementation here
-        # ...
-        
+        # Simulate download success
         return True
