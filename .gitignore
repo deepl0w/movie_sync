@@ -165,3 +165,4 @@ TEST_SUMMARY.md
 # Downloaded movies (if saved in project directory)
 Downloads/
 movies/
+.project_root

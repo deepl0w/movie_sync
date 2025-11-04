@@ -25,7 +25,8 @@ class FileListDownloader(MovieDownloader):
     def __init__(self, queue_file: Optional[str] = None,
                  torrent_dir: Optional[str] = None,
                  config_file: Optional[str] = None,
-                 use_qbittorrent: bool = True):
+                 use_qbittorrent: bool = True,
+                 download_directory: Optional[str] = None):
         # Use default paths in ~/.movie_sync if not specified
         config_dir = Path(os.path.expanduser("~/.movie_sync"))
         if queue_file is None:
@@ -77,7 +78,8 @@ class FileListDownloader(MovieDownloader):
             )
             self.qbt_category = qbt_config.get("category", "Movies")
             self.qbt_tags = qbt_config.get("tags", "movie_sync,filelist")
-            self.qbt_save_path = qbt_config.get("save_path", None)
+            # Use download_directory from config.json if provided, otherwise use qbt save_path from filelist_config.json
+            self.qbt_save_path = download_directory if download_directory else qbt_config.get("save_path", None)
         else:
             self.use_qbittorrent = False
             self.qbt_manager = None

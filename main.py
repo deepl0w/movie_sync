@@ -146,7 +146,8 @@ def run_movie_sync(config: dict, enable_web: bool = False, web_port: int = 5000)
     logger.info("Initializing FileList downloader...")
     downloader = FileListDownloader(
         queue_file=None,  # Not used in threaded mode
-        use_qbittorrent=True
+        use_qbittorrent=True,
+        download_directory=config.get('download_directory', os.path.expanduser("~/Downloads"))
     )
     
     # Create worker threads

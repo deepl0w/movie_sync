@@ -2,6 +2,13 @@
 
 All notable changes to Movie Sync project.
 
+## [0.2.0] - 2025-xx-xx
+
+### Changes
+
+- Downloaded items are now moved to the downloaded queue only after they are truly downloaded in the torrent client (instead of when they are added)
+- Merged  `download_directory` from `config.json` and `qbittorrent.save_path` from `filelist_config.json`, now only `download_directory` is used
+
 ## [0.1.0] - 2025-10-21
 
 ### 🎉 Initial Release
