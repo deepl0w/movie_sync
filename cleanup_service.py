@@ -185,19 +185,20 @@ class CleanupService:
     
     def _remove_from_qbittorrent(self, title: str, year: str) -> bool:
         """
-        Remove torrent from qBittorrent
+        Remove torrent(s) from qBittorrent
         
         Args:
             title: Movie title
             year: Movie year
             
         Returns:
-            True if torrent was removed
+            True if at least one torrent was removed
         """
         if not self.qbt_manager or not self.qbt_manager.client:
             return False
         
         normalized_title = self._normalize_title(title)
+        removed_count = 0
         
         try:
             # Get list of torrents from qBittorrent
@@ -205,22 +206,14 @@ class CleanupService:
             
             for torrent in torrents:
                 torrent_name = torrent.name.lower()
+                should_remove = False
                 
                 # Check for substring match
                 if normalized_title in torrent_name:
                     if year and str(year) in torrent_name:
-                        # Remove torrent with files
-                        self.qbt_manager.client.torrents_delete(
-                            delete_files=True, 
-                            torrent_hashes=torrent.hash
-                        )
-                        return True
+                        should_remove = True
                     elif not year:
-                        self.qbt_manager.client.torrents_delete(
-                            delete_files=True, 
-                            torrent_hashes=torrent.hash
-                        )
-                        return True
+                        should_remove = True
                 else:
                     # Fuzzy matching fallback
                     title_part = self._extract_title_part(torrent_name)
@@ -230,21 +223,29 @@ class CleanupService:
                         similarity += 0.10
                     
                     if similarity >= 0.85:
-                        self.qbt_manager.client.torrents_delete(
-                            delete_files=True, 
-                            torrent_hashes=torrent.hash
-                        )
-                        return True
+                        should_remove = True
+                
+                if should_remove:
+                    # Remove torrent with files
+                    self.qbt_manager.client.torrents_delete(
+                        delete_files=True, 
+                        torrent_hashes=torrent.hash
+                    )
+                    removed_count += 1
+                    logger.debug(f"[DELETE]  Removed torrent from qBittorrent: {torrent.name}")
         
         except Exception as e:
             logger.warning(f"Error accessing qBittorrent: {e}")
             return False
         
-        return False
+        return removed_count > 0
     
     def _normalize_title(self, title: str) -> str:
         """Normalize title for matching"""
-        return title.lower().replace(' ', '.').replace(':', '').replace("'", '')
+        # Strip year from title if present in parentheses (e.g., "Amadeus (1984)" -> "Amadeus")
+        # Handles spaces inside parentheses like "Movie ( 1984 )"
+        title_clean = re.sub(r'\s*\(\s*\d{4}\s*\)\s*$', '', title).strip()
+        return title_clean.lower().replace(' ', '.').replace(':', '').replace("'", '')
     
     def _extract_title_part(self, filename: str) -> str:
         """Extract title portion from filename (before quality indicators)"""

@@ -401,13 +401,13 @@ class TestRemoveFromQBittorrent:
         mock_qbt_manager.client.torrents_delete.assert_not_called()
     
     def test_remove_multiple_torrents_best_match(self, cleanup_service_with_qbt, mock_qbt_manager):
-        """Test selecting best match when multiple torrents exist"""
+        """Test removing all matching torrents when multiple exist"""
         torrent1 = MagicMock()
-        torrent1.name = "Inception.2010.1080p.BluRay"  # Best match (higher similarity)
+        torrent1.name = "Inception.2010.1080p.BluRay"  # Match
         torrent1.hash = "hash1"
         
         torrent2 = MagicMock()
-        torrent2.name = "Inception.Movie.2010.720p"  # Lower similarity
+        torrent2.name = "Inception.Movie.2010.720p"  # Match
         torrent2.hash = "hash2"
         
         mock_qbt_manager.client.torrents_info.return_value = [torrent1, torrent2]
@@ -415,8 +415,8 @@ class TestRemoveFromQBittorrent:
         result = cleanup_service_with_qbt._remove_from_qbittorrent("Inception", "2010")
         
         assert result is True
-        # Should delete the first match that meets the threshold
-        mock_qbt_manager.client.torrents_delete.assert_called_once()
+        # Should delete ALL torrents that match
+        assert mock_qbt_manager.client.torrents_delete.call_count == 2
 
 
 class TestNormalizeTitle:
@@ -428,10 +428,10 @@ class TestNormalizeTitle:
         assert result == "the.inception.movie"
     
     def test_normalize_special_chars(self, cleanup_service):
-        """Test normalization with special characters"""
+        """Test normalization with special characters and year stripping"""
         result = cleanup_service._normalize_title("The Matrix: Reloaded (2003)")
-        # Colons and apostrophes removed, spaces to dots
-        assert result == "the.matrix.reloaded.(2003)"
+        # Colons and apostrophes removed, spaces to dots, year in parentheses stripped
+        assert result == "the.matrix.reloaded"
     
     def test_normalize_dots_already(self, cleanup_service):
         """Test normalization with dots already present"""
@@ -452,6 +452,16 @@ class TestNormalizeTitle:
         """Test that apostrophes are removed"""
         result = cleanup_service._normalize_title("Ocean's Eleven")
         assert result == "oceans.eleven"
+    
+    def test_normalize_year_in_parentheses(self, cleanup_service):
+        """Test that year in parentheses is stripped (regression test for Amadeus bug)"""
+        result = cleanup_service._normalize_title("Amadeus (1984)")
+        assert result == "amadeus"
+    
+    def test_normalize_year_in_parentheses_with_spaces(self, cleanup_service):
+        """Test year stripping with various spacing"""
+        result = cleanup_service._normalize_title("The Godfather ( 1972 )")
+        assert result == "the.godfather"
 
 
 class TestExtractTitlePart:
